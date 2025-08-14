@@ -260,12 +260,17 @@ with tab1:
         product_form = st.selectbox("Product Form", ["Drug Product", "Drug Substance", "Other"])
         batch_number = st.text_area("Batch Number(s)")
         
-        # Modified sample quantity input
+        # Modified sample quantity input with fixed key
         col1, col2 = st.columns(2)
         with col1:
             sample_unit = st.selectbox("Sample Quantity Unit", ["mg", "ml"])
         with col2:
-            sample_quantity = st.number_input(f"Sample Quantity ({sample_unit})", min_value=0.0, step=0.1)
+            sample_quantity = st.number_input(
+                f"Sample Quantity ({sample_unit})", 
+                min_value=0.0, 
+                step=0.1,
+                key="sample_quantity_input"  # Fixed key that doesn't change
+            )
         
         number_of_vials = st.number_input("Number of Vials", min_value=1, step=1)
         safety_risk = st.text_area("Safety Risk")
@@ -314,6 +319,7 @@ with tab1:
             """)
         
         method_reference = st.text_area("Method reference and/or specification to be applied if relevant")
+        
         submitted = st.form_submit_button("Generate Document")
     
     if submitted:
