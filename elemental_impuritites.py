@@ -131,9 +131,27 @@ with tab1:
         
         # Elements to be determined
         st.subheader("Elements to be determined")
+        st.write("Uncheck elements that are not needed:")
+        
+        # Calculate number of rows needed (5 elements per row)
+        elements_list = list(elements_table.items())
+        num_rows = (len(elements_list) + 4) // 5  # Ceiling division by 5
+        
         elements_selected = {}
-        for element, properties in elements_table.items():
-            elements_selected[element] = st.checkbox(f"{element} (Class {properties['Class']})")
+        # Create grid layout for elements
+        for row in range(num_rows):
+            cols = st.columns(5)
+            for col in range(5):
+                idx = row * 5 + col
+                if idx < len(elements_list):
+                    element, properties = elements_list[idx]
+                    with cols[col]:
+                        # Pre-select all checkboxes (value=True)
+                        elements_selected[element] = st.checkbox(
+                            f"{element} (Class {properties['Class']})",
+                            value=True,  # Pre-select all checkboxes
+                            key=f"element_{element}"
+                        )
         
         ichq3d_analysis = st.checkbox("ICHQ3D Analysis")
         method_reference = st.text_area("Method reference")
