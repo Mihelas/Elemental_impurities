@@ -90,7 +90,7 @@ def create_word_document(form_data):
     cell = table.cell(1, 0)
     cell.text = "Requestor Name/Phone/E.mail:"
     cell = table.cell(1, 1)
-    cell.text = form_data['requestor_info']
+    cell.text = f"{form_data['requestor_name']} / {form_data['requestor_phone']} / {form_data['requestor_email']}"
     
     # Row 3
     cell = table.cell(2, 0)
@@ -242,8 +242,16 @@ with tab1:
     
     with st.form("analysis_request_form"):
         st.subheader("Requestor Information")
-        requestor_site = st.text_input("Requestor Site")
-        requestor_info = st.text_input("Requestor Name/Phone/Email")
+        requestor_site = st.selectbox("Requestor Site", ["Frankfurt", "Vitry", "Framingham"])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            requestor_name = st.text_input("Requestor Name")
+        with col2:
+            requestor_phone = st.text_input("Requestor Phone")
+        with col3:
+            requestor_email = st.text_input("Requestor Email")
+        
         request_date = st.date_input("Request Date", datetime.now())
         
         st.subheader("Sample Information")
@@ -306,7 +314,6 @@ with tab1:
             """)
         
         method_reference = st.text_area("Method reference and/or specification to be applied if relevant")
-        
         submitted = st.form_submit_button("Generate Document")
     
     if submitted:
@@ -314,7 +321,9 @@ with tab1:
             # Create form data dictionary
             form_data = {
                 "requestor_site": requestor_site,
-                "requestor_info": requestor_info,
+                "requestor_name": requestor_name,
+                "requestor_phone": requestor_phone,
+                "requestor_email": requestor_email,
                 "request_date": request_date.strftime("%Y-%m-%d"),
                 "product_name": product_name,
                 "actime_code": actime_code,
@@ -353,7 +362,7 @@ with tab1:
             st.session_state.submitted_requests.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "product": product_name,
-                "requestor": requestor_info,
+                "requestor": requestor_name,
                 "status": "Submitted"
             })
             
