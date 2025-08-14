@@ -260,17 +260,13 @@ with tab1:
         product_form = st.selectbox("Product Form", ["Drug Product", "Drug Substance", "Other"])
         batch_number = st.text_area("Batch Number(s)")
         
-        # Modified sample quantity input with fixed key
+        # Completely separated sample quantity and unit inputs
+        st.write("Sample Quantity:")
         col1, col2 = st.columns(2)
         with col1:
-            sample_unit = st.selectbox("Sample Quantity Unit", ["mg", "ml"])
+            sample_quantity = st.number_input("Value", min_value=0.0, step=0.1)
         with col2:
-            sample_quantity = st.number_input(
-                f"Sample Quantity ({sample_unit})", 
-                min_value=0.0, 
-                step=0.1,
-                key="sample_quantity_input"  # Fixed key that doesn't change
-            )
+            sample_unit = st.selectbox("Unit", ["mg", "ml"])
         
         number_of_vials = st.number_input("Number of Vials", min_value=1, step=1)
         safety_risk = st.text_area("Safety Risk")
