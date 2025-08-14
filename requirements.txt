@@ -16,3 +16,4 @@ xlsxwriter
 PyPDF2
 openpyxl
 pycryptodome
+python-docx
