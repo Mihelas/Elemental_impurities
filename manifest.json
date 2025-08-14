@@ -3,23 +3,28 @@
   "locale": "English_United States.1252",
   "metadata": {
     "appmode": "python-streamlit",
-    "entrypoint": "Elemental_impurities_automation"
+    "entrypoint": "elemental_impuritites"
   },
   "python": {
-    "version": "3.8.6",
+    "version": "3.8.10",
     "package_manager": {
       "name": "pip",
-      "version": "25.0.1",
+      "version": "21.1.1",
       "package_file": "requirements.txt"
     }
   },
   "files": {
     "requirements.txt": {
-      "checksum": "876940e8d385532ade629ad253b96e0d"
+      "checksum": "70e30095c9d8bae7f34d032e0ed0a400"
     },
-    "elemental_impurities.py": {
-      "checksum": "482fb39bc2425cee93347a4b1a84789e"
+    "Analysis_Request.doc": {
+      "checksum": "ea47be8a68094bb841203abb76913059"
     },
-        }
+    "Analysis_Request.docx": {
+      "checksum": "4d66bdbf978c6141021b4f34877fefa1"
+    },
+    "elemental_impuritites.py": {
+      "checksum": "b853bcf4194dbf221ea1ac3fba37d742"
+    }
   }
 }
