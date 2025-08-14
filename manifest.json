@@ -3,7 +3,7 @@
   "locale": "English_United States.1252",
   "metadata": {
     "appmode": "python-streamlit",
-    "entrypoint": "HIIAC_parser_streamlit_test"
+    "entrypoint": "Elemental_impurities_automation"
   },
   "python": {
     "version": "3.8.6",
@@ -17,7 +17,7 @@
     "requirements.txt": {
       "checksum": "876940e8d385532ade629ad253b96e0d"
     },
-    "HIIAC_parser_streamlit_test.py": {
+    "elemental_impurities.py": {
       "checksum": "482fb39bc2425cee93347a4b1a84789e"
     },
     "template_test.xlsx": {
