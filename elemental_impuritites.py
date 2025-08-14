@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime
 import io
 from docx import Document
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # Set page config
 st.set_page_config(page_title="Analysis Request System", layout="wide")
@@ -45,50 +47,183 @@ elements_table = {
 # Function to create Word document
 def create_word_document(form_data):
     doc = Document()
-    doc.add_heading('Inorganic Analysis Request', 0)
     
-    # Add sections
-    doc.add_paragraph('BioA-Elemental Analysis')
-    doc.add_paragraph('(Elemental Analysis Laboratory – Vitry Lavoisier Building L304)')
-    doc.add_paragraph('Jean-francois.rameau@sanofi.com / Sylvie.monget@sanofi.com')
+    # Set margins
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
     
-    # Requestor Information
+    # Title
+    title = doc.add_heading('Inorganic Analysis Request', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # BioA-Elemental Analysis section
+    subtitle = doc.add_heading('BioA-Elemental Analysis', level=1)
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p = doc.add_paragraph('(Elemental Analysis Laboratory – Vitry Lavoisier Building L304)')
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p = doc.add_paragraph('Jean-francois.rameau@sanofi.com / Sylvie.monget@sanofi.com')
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Add some space
+    doc.add_paragraph()
+    
+    # Requestor Information section
     doc.add_heading('REQUESTOR INFORMATION', level=1)
-    doc.add_paragraph(f"Requestor Site: {form_data['requestor_site']}")
-    doc.add_paragraph(f"Requestor Name/Phone/E.mail: {form_data['requestor_info']}")
-    doc.add_paragraph(f"Request Date: {form_data['request_date']}")
     
-    # Sample Information
+    # Create a table for requestor info
+    table = doc.add_table(rows=3, cols=2)
+    table.style = 'Table Grid'
+    
+    # Row 1
+    cell = table.cell(0, 0)
+    cell.text = "Requestor Site:"
+    cell = table.cell(0, 1)
+    cell.text = form_data['requestor_site']
+    
+    # Row 2
+    cell = table.cell(1, 0)
+    cell.text = "Requestor Name/Phone/E.mail:"
+    cell = table.cell(1, 1)
+    cell.text = form_data['requestor_info']
+    
+    # Row 3
+    cell = table.cell(2, 0)
+    cell.text = "Request Date:"
+    cell = table.cell(2, 1)
+    cell.text = form_data['request_date']
+    
+    # Add some space
+    doc.add_paragraph()
+    
+    # Sample Information section
     doc.add_heading('SAMPLE INFORMATION', level=1)
-    doc.add_paragraph(f"PRODUCT Name: {form_data['product_name']}")
-    doc.add_paragraph(f"Actime Code: {form_data['actime_code']}")
-    doc.add_paragraph(f"PRODUCT Form: {form_data['product_form']}")
-    doc.add_paragraph(f"Batch number: {form_data['batch_number']}")
-    doc.add_paragraph(f"Sample quantity: {form_data['sample_quantity']} {form_data['sample_unit']}")
-    doc.add_paragraph(f"Number of vials: {form_data['number_of_vials']}")
-    doc.add_paragraph(f"Safety risk: {form_data['safety_risk']}")
-    doc.add_paragraph(f"Shipment conditions: {form_data['shipment_conditions']}")
-    doc.add_paragraph(f"Storage conditions: {form_data['storage_conditions']}")
     
-    # Analysis Information
+    # Create a table for sample info
+    table = doc.add_table(rows=9, cols=2)
+    table.style = 'Table Grid'
+    
+    # Row 1
+    cell = table.cell(0, 0)
+    cell.text = "PRODUCT Name:"
+    cell = table.cell(0, 1)
+    cell.text = form_data['product_name']
+    
+    # Row 2
+    cell = table.cell(1, 0)
+    cell.text = "Actime Code:"
+    cell = table.cell(1, 1)
+    cell.text = form_data['actime_code']
+    
+    # Row 3
+    cell = table.cell(2, 0)
+    cell.text = "PRODUCT Form (Drug Product, Drug substance, other):"
+    cell = table.cell(2, 1)
+    cell.text = form_data['product_form']
+    
+    # Row 4
+    cell = table.cell(3, 0)
+    cell.text = "Batch number (provide a list in attachment in case of several samples):"
+    cell = table.cell(3, 1)
+    cell.text = form_data['batch_number']
+    
+    # Row 5
+    cell = table.cell(4, 0)
+    cell.text = "Sample quantity (volume or weight):"
+    cell = table.cell(4, 1)
+    cell.text = f"{form_data['sample_quantity']} {form_data['sample_unit']}"
+    
+    # Row 6
+    cell = table.cell(5, 0)
+    cell.text = "Number of vials:"
+    cell = table.cell(5, 1)
+    cell.text = str(form_data['number_of_vials'])
+    
+    # Row 7
+    cell = table.cell(6, 0)
+    cell.text = "Safety risk (Safety data sheet to be provided by the requestor):"
+    cell = table.cell(6, 1)
+    cell.text = form_data['safety_risk']
+    
+    # Row 8
+    cell = table.cell(7, 0)
+    cell.text = "Shipment conditions:"
+    cell = table.cell(7, 1)
+    cell.text = form_data['shipment_conditions']
+    
+    # Row 9
+    cell = table.cell(8, 0)
+    cell.text = "Storage conditions:"
+    cell = table.cell(8, 1)
+    cell.text = form_data['storage_conditions']
+    
+    # Add some space
+    doc.add_paragraph()
+    
+    # Analysis Information section
     doc.add_heading('ANALYSIS INFORMATION', level=1)
-    doc.add_paragraph(f"GMP Analysis: {form_data['gmp_analysis']}")
+    
+    # GMP Analysis
+    p = doc.add_paragraph()
+    p.add_run("GMP Analysis: ").bold = True
+    p.add_run(f"{form_data['gmp_analysis']}")
+    
     if form_data['gmp_analysis'] == 'Yes':
-        doc.add_paragraph(f"Purpose: {form_data['gmp_purpose']}")
-    doc.add_paragraph(f"Analysis Type: {form_data['analysis_type']}")
+        p.add_run("  For release ☐  For information ☐")
+        # Replace the appropriate checkbox with an X
+        if form_data['gmp_purpose'] == "For Release":
+            p.text = p.text.replace("For release ☐", "For release ☒")
+        else:
+            p.text = p.text.replace("For information ☐", "For information ☒")
+    
+    # Analysis Type
+    p = doc.add_paragraph()
+    p.add_run("Quantitative Analysis ☐  Qualitative Analysis (Screening) ☐")
+    # Replace the appropriate checkbox with an X
+    if form_data['analysis_type'] == "Quantitative Analysis":
+        p.text = p.text.replace("Quantitative Analysis ☐", "Quantitative Analysis ☒")
+    else:
+        p.text = p.text.replace("Qualitative Analysis (Screening) ☐", "Qualitative Analysis (Screening) ☒")
     
     # Elements to be determined
-    doc.add_paragraph("Elements to be determined:")
-    for element, checked in form_data['elements'].items():
-        if checked:
-            doc.add_paragraph(f"- {element}", style='List Bullet')
+    p = doc.add_paragraph()
+    p.add_run("Element(s) to be determined (quantitative analysis):").bold = True
     
-    doc.add_paragraph(f"ICHQ3D Analysis: {'Yes' if form_data['ichq3d_analysis'] else 'No'}")
-    doc.add_paragraph(f"Method reference: {form_data['method_reference']}")
+    # Create a list of selected elements
+    selected_elements = [element for element, checked in form_data['elements'].items() if checked]
+    p = doc.add_paragraph(", ".join(selected_elements))
     
-    # Request reference
-    doc.add_paragraph("(Completed by the BioA/AE Laboratory)")
-    doc.add_paragraph("Request reference (Steel or iLab): _____________________")
+    # ICHQ3D Analysis
+    p = doc.add_paragraph()
+    p.add_run("ICHQ3D Analysis: ").bold = True
+    p.add_run("Yes" if form_data['ichq3d_analysis'] else "No")
+    
+    if form_data['ichq3d_analysis']:
+        p = doc.add_paragraph("For ICHQ3D request, documents to be provided:")
+        doc.add_paragraph("* Phase 1 and 2: R&D Medicinal product ID Card (SD-000133)", style='List Bullet')
+        doc.add_paragraph("* Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)", style='List Bullet')
+    
+    # Method reference
+    p = doc.add_paragraph()
+    p.add_run("Method reference and/or specification to be applied if relevant (Veeva Vault or Pharmacopoeia reference):").bold = True
+    p = doc.add_paragraph(form_data['method_reference'])
+    
+    # Add some space
+    doc.add_paragraph()
+    
+    # Request reference section
+    p = doc.add_paragraph()
+    p.add_run("(Completed by the BioA/AE Laboratory)").italic = True
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p = doc.add_paragraph()
+    p.add_run("Request reference (Steel or iLab): ").bold = True
+    p.add_run("_____________________")
     
     # Save to BytesIO
     doc_io = io.BytesIO()
