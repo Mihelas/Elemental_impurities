@@ -67,7 +67,29 @@ with tab1:
     st.title("Inorganic Analysis Request Form")
     
     with st.form("analysis_request_form"):
-        # ... (all the form inputs remain the same)
+        st.subheader("Requestor Information")
+        requestor_site = st.text_input("Requestor Site")
+        requestor_info = st.text_input("Requestor Name/Phone/Email")
+        request_date = st.date_input("Request Date", datetime.now())
+        
+        st.subheader("Sample Information")
+        product_name = st.text_input("Product Name")
+        actime_code = st.text_input("Actime Code")
+        product_form = st.selectbox("Product Form", ["Drug Product", "Drug Substance", "Other"])
+        batch_number = st.text_area("Batch Number(s)")
+        sample_quantity = st.text_input("Sample Quantity (volume or weight)")
+        number_of_vials = st.number_input("Number of Vials", min_value=1, step=1)
+        safety_risk = st.text_area("Safety Risk")
+        shipment_conditions = st.text_input("Shipment Conditions")
+        storage_conditions = st.text_input("Storage Conditions")
+        
+        st.subheader("Analysis Information")
+        gmp_analysis = st.radio("GMP Analysis", ["Yes", "No"])
+        gmp_purpose = st.radio("Purpose", ["For Release", "For Information"]) if gmp_analysis == "Yes" else "N/A"
+        analysis_type = st.radio("Analysis Type", ["Quantitative Analysis", "Qualitative Analysis (Screening)"])
+        elements_to_determine = st.text_area("Element(s) to be determined")
+        ichq3d_analysis = st.checkbox("ICHQ3D Analysis")
+        method_reference = st.text_area("Method reference")
         
         submitted = st.form_submit_button("Generate Document")
     
@@ -101,7 +123,7 @@ with tab1:
             # Success message
             st.success("Document generated successfully!")
             
-            # Download button (moved outside the form)
+            # Download button (outside the form)
             filename = f"Analysis_Request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
             st.download_button(
                 label="Download Filled Template",
@@ -120,3 +142,17 @@ with tab1:
             
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
+
+# Request Status Tab
+with tab2:
+    st.title("Request Status")
+    
+    if not st.session_state.submitted_requests:
+        st.info("No requests have been submitted yet.")
+    else:
+        df = pd.DataFrame(st.session_state.submitted_requests)
+        st.dataframe(df)
+        
+        if st.button("Clear All Requests"):
+            st.session_state.submitted_requests = []
+            st.experimental_rerun()
