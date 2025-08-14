@@ -198,15 +198,20 @@ def create_word_document(form_data):
     selected_elements = [element for element, checked in form_data['elements'].items() if checked]
     p = doc.add_paragraph(", ".join(selected_elements))
     
-    # ICHQ3D Analysis
+    # ICHQ3D Analysis - separate section
     p = doc.add_paragraph()
-    p.add_run("ICHQ3D Analysis: ").bold = True
-    p.add_run("Yes" if form_data['ichq3d_analysis'] else "No")
+    p.add_run("ICHQ3D Analysis:").bold = True
+    p.add_run(" " + ("Yes" if form_data['ichq3d_analysis'] else "No"))
     
     if form_data['ichq3d_analysis']:
-        p = doc.add_paragraph("For ICHQ3D request, documents to be provided:")
-        doc.add_paragraph("* Phase 1 and 2: R&D Medicinal product ID Card (SD-000133)", style='List Bullet')
-        doc.add_paragraph("* Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)", style='List Bullet')
+        p = doc.add_paragraph()
+        p.add_run("For ICHQ3D request, documents to be provided:").bold = True
+        
+        p = doc.add_paragraph("Phase 1 and 2: R&D Medecinal product ID Card (SD-000133)")
+        p.paragraph_format.left_indent = Inches(0.5)
+        
+        p = doc.add_paragraph("Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)")
+        p.paragraph_format.left_indent = Inches(0.5)
     
     # Method reference
     p = doc.add_paragraph()
@@ -288,8 +293,19 @@ with tab1:
                             key=f"element_{element}"
                         )
         
-        ichq3d_analysis = st.checkbox("ICHQ3D Analysis")
-        method_reference = st.text_area("Method reference")
+        # Separate ICHQ3D Analysis section with some space
+        st.markdown("---")
+        st.subheader("ICHQ3D Analysis")
+        ichq3d_analysis = st.checkbox("Request ICHQ3D Analysis")
+        
+        if ichq3d_analysis:
+            st.info("""
+            For ICHQ3D request, documents to be provided:
+            * Phase 1 and 2: R&D Medecinal product ID Card (SD-000133)
+            * Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)
+            """)
+        
+        method_reference = st.text_area("Method reference and/or specification to be applied if relevant")
         
         submitted = st.form_submit_button("Generate Document")
     
