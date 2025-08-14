@@ -14,6 +14,34 @@ if 'submitted_requests' not in st.session_state:
 # Create tabs
 tab1, tab2 = st.tabs(["Request Form", "Request Status"])
 
+# Predefined elements table
+elements_table = {
+    "Cd": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
+    "Pb": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
+    "As": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
+    "Hg": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
+    "Co": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
+    "V": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
+    "Ni": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
+    "Tl": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Au": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Pd": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Ir": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Os": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Rh": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Ru": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Se": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Ag": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Pt": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
+    "Li": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
+    "Sb": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
+    "Ba": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
+    "Mo": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
+    "Cu": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
+    "Sn": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
+    "Cr": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
+}
+
 # Function to create Word document
 def create_word_document(form_data):
     doc = Document()
@@ -36,7 +64,7 @@ def create_word_document(form_data):
     doc.add_paragraph(f"Actime Code: {form_data['actime_code']}")
     doc.add_paragraph(f"PRODUCT Form: {form_data['product_form']}")
     doc.add_paragraph(f"Batch number: {form_data['batch_number']}")
-    doc.add_paragraph(f"Sample quantity: {form_data['sample_quantity']}")
+    doc.add_paragraph(f"Sample quantity: {form_data['sample_quantity']} {form_data['sample_unit']}")
     doc.add_paragraph(f"Number of vials: {form_data['number_of_vials']}")
     doc.add_paragraph(f"Safety risk: {form_data['safety_risk']}")
     doc.add_paragraph(f"Shipment conditions: {form_data['shipment_conditions']}")
@@ -48,7 +76,13 @@ def create_word_document(form_data):
     if form_data['gmp_analysis'] == 'Yes':
         doc.add_paragraph(f"Purpose: {form_data['gmp_purpose']}")
     doc.add_paragraph(f"Analysis Type: {form_data['analysis_type']}")
-    doc.add_paragraph(f"Element(s) to be determined: {form_data['elements_to_determine']}")
+    
+    # Elements to be determined
+    doc.add_paragraph("Elements to be determined:")
+    for element, checked in form_data['elements'].items():
+        if checked:
+            doc.add_paragraph(f"- {element}", style='List Bullet')
+    
     doc.add_paragraph(f"ICHQ3D Analysis: {'Yes' if form_data['ichq3d_analysis'] else 'No'}")
     doc.add_paragraph(f"Method reference: {form_data['method_reference']}")
     
@@ -77,7 +111,14 @@ with tab1:
         actime_code = st.text_input("Actime Code")
         product_form = st.selectbox("Product Form", ["Drug Product", "Drug Substance", "Other"])
         batch_number = st.text_area("Batch Number(s)")
-        sample_quantity = st.text_input("Sample Quantity (volume or weight)")
+        
+        # Modified sample quantity input
+        col1, col2 = st.columns(2)
+        with col1:
+            sample_unit = st.selectbox("Sample Quantity Unit", ["mg", "ml"])
+        with col2:
+            sample_quantity = st.number_input(f"Sample Quantity ({sample_unit})", min_value=0.0, step=0.1)
+        
         number_of_vials = st.number_input("Number of Vials", min_value=1, step=1)
         safety_risk = st.text_area("Safety Risk")
         shipment_conditions = st.text_input("Shipment Conditions")
@@ -87,7 +128,13 @@ with tab1:
         gmp_analysis = st.radio("GMP Analysis", ["Yes", "No"])
         gmp_purpose = st.radio("Purpose", ["For Release", "For Information"]) if gmp_analysis == "Yes" else "N/A"
         analysis_type = st.radio("Analysis Type", ["Quantitative Analysis", "Qualitative Analysis (Screening)"])
-        elements_to_determine = st.text_area("Element(s) to be determined")
+        
+        # Elements to be determined
+        st.subheader("Elements to be determined")
+        elements_selected = {}
+        for element, properties in elements_table.items():
+            elements_selected[element] = st.checkbox(f"{element} (Class {properties['Class']})")
+        
         ichq3d_analysis = st.checkbox("ICHQ3D Analysis")
         method_reference = st.text_area("Method reference")
         
@@ -105,6 +152,7 @@ with tab1:
                 "product_form": product_form,
                 "batch_number": batch_number,
                 "sample_quantity": sample_quantity,
+                "sample_unit": sample_unit,
                 "number_of_vials": str(number_of_vials),
                 "safety_risk": safety_risk,
                 "shipment_conditions": shipment_conditions,
@@ -112,7 +160,7 @@ with tab1:
                 "gmp_analysis": gmp_analysis,
                 "gmp_purpose": gmp_purpose,
                 "analysis_type": analysis_type,
-                "elements_to_determine": elements_to_determine,
+                "elements": elements_selected,
                 "ichq3d_analysis": ichq3d_analysis,
                 "method_reference": method_reference,
             }
