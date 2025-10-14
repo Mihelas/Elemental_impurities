@@ -17,4 +17,4 @@ PyPDF2
 openpyxl
 pycryptodome
 python-docx
-fpdf==1.7.2
+fpdf2==2.7.4

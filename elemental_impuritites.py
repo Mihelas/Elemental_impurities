@@ -349,7 +349,7 @@ def create_word_document(form_data, calculation_data=None):
 # Function to create PDF report template
 def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
     """
-    Create a PDF report template for elemental impurities analysis using FPDF
+    Create a PDF report template for elemental impurities analysis using FPDF2
     """
     class PDF(FPDF):
         def header(self):
@@ -375,6 +375,25 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
             self.set_font('Arial', 'I', 8)
             self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
     
+    # Helper function to clean text
+    def clean_text(text):
+        """Replace special Unicode characters with ASCII equivalents"""
+        replacements = {
+            '\u2013': '-',  # en-dash
+            '\u2014': '--', # em-dash
+            '\u2018': "'",  # left single quote
+            '\u2019': "'",  # right single quote
+            '\u201c': '"',  # left double quote
+            '\u201d': '"',  # right double quote
+            '\u2022': '*',  # bullet
+            '\u00b0': ' degrees',  # degree symbol
+            '\u00b5': 'u',  # micro sign (µ -> u)
+            'µ': 'u',       # micro sign alternative
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
+    
     # Create PDF object
     pdf = PDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -383,25 +402,29 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     # Set font
     pdf.set_font('Arial', '', 11)
     
+    # Clean product name
+    product_name_clean = clean_text(product_name)
+    batch_number_clean = clean_text(batch_number)
+    
     # Purpose and elements
-    pdf.cell(0, 6, f'Elemental impurities analysis in {product_name} according to ICH Q3D criteria', 0, 1)
+    pdf.cell(0, 6, clean_text(f'Elemental impurities analysis in {product_name} according to ICH Q3D criteria'), 0, 1)
     pdf.cell(0, 6, f'Reference of analysis: AR-{datetime.now().strftime("%Y-%m")}', 0, 1)
     pdf.ln(10)
     
-    pdf.cell(0, 6, f'Purpose: Determination of elemental impurities by ICP-MS in {product_name}, according to ICH Q3D.', 0, 1)
+    pdf.cell(0, 6, clean_text(f'Purpose: Determination of elemental impurities by ICP-MS in {product_name}, according to ICH Q3D.'), 0, 1)
     pdf.ln(5)
     
     # Elements to be tested
     selected_elements = list(elements_data['Element'])
-    pdf.multi_cell(0, 6, f'As defined in the R&D MP ID card, the elements to be tested are {", ".join(selected_elements)}.', 0)
-    pdf.cell(0, 6, f'The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.', 0, 1)
+    pdf.multi_cell(0, 6, clean_text(f'As defined in the R&D MP ID card, the elements to be tested are {", ".join(selected_elements)}.'), 0)
+    pdf.cell(0, 6, clean_text(f'The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.'), 0, 1)
     pdf.ln(10)
     
     # Batch reference
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 6, '1. Batch reference', 0, 1)
     pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, batch_number, 0, 1)
+    pdf.cell(0, 6, batch_number_clean, 0, 1)
     pdf.ln(5)
     
     # Sample preparation
@@ -416,7 +439,7 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 6, '3. ICP-MS', 0, 1)
     pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, 'ICP-MS make and model: Thermo Scientific – iCAP RQ', 0, 1)
+    pdf.cell(0, 6, 'ICP-MS make and model: Thermo Scientific - iCAP RQ', 0, 1)
     pdf.ln(5)
     
     # Results
@@ -428,11 +451,11 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     pdf.set_font('Arial', 'B', 11)
     
     # Table header
-    pdf.cell(90, 10, product_name, 1, 0, 'C')
+    pdf.cell(90, 10, product_name_clean, 1, 0, 'C')
     pdf.cell(90, 10, '', 1, 1, 'C')
     
     pdf.cell(90, 10, 'Element', 1, 0, 'C')
-    pdf.cell(90, 10, f'Batch {batch_number}', 1, 1, 'C')
+    pdf.cell(90, 10, f'Batch {batch_number_clean}', 1, 1, 'C')
     
     # Table data
     pdf.set_font('Arial', '', 11)
@@ -450,15 +473,15 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     # Analysis information
     pdf.cell(0, 6, f'Analysis date: {datetime.now().strftime("%d-%b-%Y")}', 0, 1)
     pdf.cell(0, 6, f'Route of administration: {route.capitalize()}', 0, 1)
-    pdf.cell(0, 6, f'Daily dose: {daily_dose} g of {product_name}', 0, 1)
+    pdf.cell(0, 6, clean_text(f'Daily dose: {daily_dose} g of {product_name}'), 0, 1)
     pdf.ln(10)
     
     # Conclusion
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 6, '5. CONCLUSION', 0, 1)
     pdf.set_font('Arial', '', 11)
-    pdf.multi_cell(0, 6, f'The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.')
-    pdf.multi_cell(0, 6, f'For the {len(selected_elements)} tested elements {", ".join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).')
+    pdf.multi_cell(0, 6, clean_text(f'The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.'))
+    pdf.multi_cell(0, 6, clean_text(f'For the {len(selected_elements)} tested elements {", ".join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).'))
     pdf.ln(10)
     
     # Appendix
@@ -472,15 +495,17 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     pdf.set_font('Arial', 'B', 9)
     col_width = 180/6  # 6 columns
     
-    # Table header
-    headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", f"{control_percentage}% PDE\nµg/g", "Reporting Limit\nµg/g"]
+    # Table header - replace µ with u
+    headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nug/day", f"{product_name_clean}\nPDE\nug/g", f"{control_percentage}% PDE\nug/g", "Reporting Limit\nug/g"]
     for header in headers:
-        pdf.cell(col_width, 10, header, 1, 0, 'C')
-    pdf.ln()
+        pdf.multi_cell(col_width, 5, header, 1, 'C', False)
+        pdf.set_xy(pdf.get_x() + col_width, pdf.get_y() - 10)
+    pdf.ln(10)
     
     # Table data
     pdf.set_font('Arial', '', 9)
     for _, row in elements_data.iterrows():
+        start_y = pdf.get_y()
         pdf.cell(col_width, 10, row['Element'], 1, 0, 'C')
         pdf.cell(col_width, 10, row['Class'], 1, 0, 'C')
         pdf.cell(col_width, 10, str(row[f'PDE ({route}) µg/day']), 1, 0, 'C')
@@ -491,7 +516,8 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     
     # Output to BytesIO
     buffer = io.BytesIO()
-    pdf.output(buffer)
+    pdf_bytes = pdf.output()
+    buffer.write(pdf_bytes)
     buffer.seek(0)
     return buffer
 
