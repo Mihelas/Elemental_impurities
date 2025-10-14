@@ -6,7 +6,6 @@ from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import numpy as np
-from fpdf import FPDF
 
 # Set page config
 st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
@@ -345,179 +344,189 @@ def create_word_document(form_data, calculation_data=None):
     doc_io.seek(0)
     return doc_io
 
-# Function to create PDF report template
-# Function to create PDF report template
+# Function to create HTML report
 def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
     """
-    Create a PDF report template for elemental impurities analysis using FPDF2
+    Create an HTML report template for elemental impurities analysis
     """
-    class PDF(FPDF):
-        def header(self):
-            # Header
-            self.set_font('Arial', 'B', 14)
-            self.cell(0, 10, 'Sanofi R&D Vitry sur Seine', 0, 1, 'C')
-            self.set_font('Arial', 'B', 12)
-            self.cell(0, 6, 'Global CMC Development', 0, 1, 'C')
-            self.cell(0, 6, 'BioAnalytics/Elemental Analysis', 0, 1, 'C')
-            self.ln(10)
-            self.set_font('Arial', 'B', 14)
-            self.cell(0, 10, 'ANALYTICAL RESULTS', 0, 1, 'C')
-            self.ln(5)
-            self.set_font('Arial', 'B', 14)
-            self.cell(0, 10, product_name, 0, 1, 'C')
-            self.set_font('Arial', 'B', 12)
-            self.cell(0, 6, 'Drug Product', 0, 1, 'C')
-            self.ln(5)
-            
-        def footer(self):
-            # Footer
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-    
-    # Helper function to clean text
-    def clean_text(text):
-        """Replace special Unicode characters with ASCII equivalents"""
-        replacements = {
-            '\u2013': '-',  # en-dash
-            '\u2014': '--', # em-dash
-            '\u2018': "'",  # left single quote
-            '\u2019': "'",  # right single quote
-            '\u201c': '"',  # left double quote
-            '\u201d': '"',  # right double quote
-            '\u2022': '*',  # bullet
-            '\u00b0': ' degrees',  # degree symbol
-            '\u00b5': 'u',  # micro sign (µ -> u)
-            'µ': 'u',       # micro sign alternative
-        }
-        for old, new in replacements.items():
-            text = text.replace(old, new)
-        return text
-    
-    # Create PDF object
-    pdf = PDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    
-    # Set font
-    pdf.set_font('Arial', '', 11)
-    
-    # Clean product name
-    product_name_clean = clean_text(product_name)
-    batch_number_clean = clean_text(batch_number)
-    
-    # Purpose and elements
-    pdf.cell(0, 6, clean_text(f'Elemental impurities analysis in {product_name} according to ICH Q3D criteria'), 0, 1)
-    pdf.cell(0, 6, f'Reference of analysis: AR-{datetime.now().strftime("%Y-%m")}', 0, 1)
-    pdf.ln(10)
-    
-    pdf.cell(0, 6, clean_text(f'Purpose: Determination of elemental impurities by ICP-MS in {product_name}, according to ICH Q3D.'), 0, 1)
-    pdf.ln(5)
-    
-    # Elements to be tested
     selected_elements = list(elements_data['Element'])
-    pdf.multi_cell(0, 6, clean_text(f'As defined in the R&D MP ID card, the elements to be tested are {", ".join(selected_elements)}.'), 0)
-    pdf.cell(0, 6, clean_text(f'The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.'), 0, 1)
-    pdf.ln(10)
-    
-    # Batch reference
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '1. Batch reference', 0, 1)
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, batch_number_clean, 0, 1)
-    pdf.ln(5)
-    
-    # Sample preparation
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '2. Sample preparation', 0, 1)
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, '3 test solutions including one spiked are prepared.', 0, 1)
-    pdf.cell(0, 6, 'Dilution: qsp 10mL with acidified water (0.4% HNO3).', 0, 1)
-    pdf.ln(5)
-    
-    # ICP-MS
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '3. ICP-MS', 0, 1)
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, 'ICP-MS make and model: Thermo Scientific - iCAP RQ', 0, 1)
-    pdf.ln(5)
-    
-    # Results
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '4. RESULTS', 0, 1)
-    pdf.ln(5)
-    
-    # Results table
-    pdf.set_font('Arial', 'B', 11)
-    
-    # Table header
-    pdf.cell(90, 10, product_name_clean, 1, 0, 'C')
-    pdf.cell(90, 10, '', 1, 1, 'C')
-    
-    pdf.cell(90, 10, 'Element', 1, 0, 'C')
-    pdf.cell(90, 10, f'Batch {batch_number_clean}', 1, 1, 'C')
-    
-    # Table data
-    pdf.set_font('Arial', '', 11)
     control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g'
     
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 40px;
+                line-height: 1.6;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .header h1 {{
+                font-size: 18px;
+                margin: 5px 0;
+            }}
+            .header h2 {{
+                font-size: 16px;
+                margin: 5px 0;
+                font-weight: normal;
+            }}
+            .header h3 {{
+                font-size: 14px;
+                margin: 5px 0;
+            }}
+            .section {{
+                margin: 20px 0;
+            }}
+            .section-title {{
+                font-size: 14px;
+                font-weight: bold;
+                margin: 15px 0 10px 0;
+            }}
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                margin: 15px 0;
+            }}
+            th, td {{
+                border: 1px solid #000;
+                padding: 8px;
+                text-align: center;
+            }}
+            th {{
+                background-color: #d3d3d3;
+                font-weight: bold;
+            }}
+            .info-text {{
+                margin: 10px 0;
+            }}
+            @media print {{
+                body {{
+                    margin: 20px;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Sanofi R&D Vitry sur Seine</h1>
+            <h2>Global CMC Development</h2>
+            <h2>BioAnalytics/Elemental Analysis</h2>
+            <h1 style="margin-top: 20px;">ANALYTICAL RESULTS</h1>
+            <h1 style="margin-top: 20px;">{product_name}</h1>
+            <h2>Drug Product</h2>
+        </div>
+        
+        <div class="info-text">
+            <p>Elemental impurities analysis in {product_name} according to ICH Q3D criteria</p>
+            <p>Reference of analysis: AR-{datetime.now().strftime('%Y-%m')}</p>
+        </div>
+        
+        <div class="section">
+            <p><strong>Purpose:</strong> Determination of elemental impurities by ICP-MS in {product_name}, according to ICH Q3D.</p>
+            <p>As defined in the R&D MP ID card, the elements to be tested are {', '.join(selected_elements)}.</p>
+            <p>The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">1. Batch reference</div>
+            <p>{batch_number}</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">2. Sample preparation</div>
+            <p>3 test solutions including one spiked are prepared.</p>
+            <p>Dilution: qsp 10mL with acidified water (0.4% HNO3).</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">3. ICP-MS</div>
+            <p>ICP-MS make and model: Thermo Scientific – iCAP RQ</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">4. RESULTS</div>
+            <table>
+                <tr>
+                    <th colspan="2">{product_name}</th>
+                </tr>
+                <tr>
+                    <th>Element</th>
+                    <th>Batch {batch_number}</th>
+                </tr>
+    """
+    
+    # Add element rows
     for element in selected_elements:
         element_data = elements_data[elements_data['Element'] == element]
         if not element_data.empty:
             control_limit = element_data.iloc[0][control_limit_col]
-            pdf.cell(90, 10, element, 1, 0, 'C')
-            pdf.cell(90, 10, f'< {control_limit}', 1, 1, 'C')
+            html_content += f"""
+                <tr>
+                    <td>{element}</td>
+                    <td>&lt; {control_limit}</td>
+                </tr>
+            """
     
-    pdf.ln(5)
+    html_content += f"""
+            </table>
+            <p>Analysis date: {datetime.now().strftime('%d-%b-%Y')}</p>
+            <p>Route of administration: {route.capitalize()}</p>
+            <p>Daily dose: {daily_dose} g of {product_name}</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">5. CONCLUSION</div>
+            <p>The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.</p>
+            <p>For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">6. APPENDIX</div>
+            <p>Table of PDE and permitted concentrations of Elemental Impurities for option 3:</p>
+            <table>
+                <tr>
+                    <th>Element</th>
+                    <th>Class</th>
+                    <th>{route.capitalize()}<br>PDE<br>µg/day</th>
+                    <th>{product_name}<br>PDE<br>µg/g</th>
+                    <th>{control_percentage}% PDE<br>µg/g</th>
+                    <th>Reporting Limit<br>µg/g</th>
+                </tr>
+    """
     
-    # Analysis information
-    pdf.cell(0, 6, f'Analysis date: {datetime.now().strftime("%d-%b-%Y")}', 0, 1)
-    pdf.cell(0, 6, f'Route of administration: {route.capitalize()}', 0, 1)
-    pdf.cell(0, 6, clean_text(f'Daily dose: {daily_dose} g of {product_name}'), 0, 1)
-    pdf.ln(10)
-    
-    # Conclusion
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '5. CONCLUSION', 0, 1)
-    pdf.set_font('Arial', '', 11)
-    pdf.multi_cell(0, 6, clean_text(f'The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.'))
-    pdf.multi_cell(0, 6, clean_text(f'For the {len(selected_elements)} tested elements {", ".join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).'))
-    pdf.ln(10)
-    
-    # Appendix
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 6, '6. APPENDIX', 0, 1)
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 6, 'Table of PDE and permitted concentrations of Elemental Impurities for option 3:', 0, 1)
-    pdf.ln(5)
-    
-    # PDE table
-    pdf.set_font('Arial', 'B', 9)
-    col_width = 180/6  # 6 columns
-    
-    # Table header - replace µ with u
-    headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nug/day", f"{product_name_clean}\nPDE\nug/g", f"{control_percentage}% PDE\nug/g", "Reporting Limit\nug/g"]
-    for header in headers:
-        pdf.multi_cell(col_width, 5, header, 1, 'C', False)
-        pdf.set_xy(pdf.get_x() + col_width, pdf.get_y() - 10)
-    pdf.ln(10)
-    
-    # Table data
-    pdf.set_font('Arial', '', 9)
+    # Add PDE table rows
     for _, row in elements_data.iterrows():
-        start_y = pdf.get_y()
-        pdf.cell(col_width, 10, row['Element'], 1, 0, 'C')
-        pdf.cell(col_width, 10, row['Class'], 1, 0, 'C')
-        pdf.cell(col_width, 10, str(row[f'PDE ({route}) µg/day']), 1, 0, 'C')
-        pdf.cell(col_width, 10, str(row['MPC µg/g']), 1, 0, 'C')
-        pdf.cell(col_width, 10, str(row[control_limit_col]), 1, 0, 'C')
-        pdf.cell(col_width, 10, str(row[control_limit_col]), 1, 0, 'C')
-        pdf.ln()
+        html_content += f"""
+                <tr>
+                    <td>{row['Element']}</td>
+                    <td>{row['Class']}</td>
+                    <td>{row[f'PDE ({route}) µg/day']}</td>
+                    <td>{row['MPC µg/g']}</td>
+                    <td>{row[control_limit_col]}</td>
+                    <td>{row[control_limit_col]}</td>
+                </tr>
+        """
     
-    # Output to BytesIO
+    html_content += """
+            </table>
+        </div>
+        
+        <div style="margin-top: 50px; text-align: center; font-style: italic;">
+            <p>SANOFI document – Internal use only</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Return HTML as bytes
     buffer = io.BytesIO()
-    pdf_bytes = pdf.output()
-    buffer.write(pdf_bytes)
+    buffer.write(html_content.encode('utf-8'))
     buffer.seek(0)
     return buffer
 
@@ -598,7 +607,8 @@ with tab1:
                             key=f"element_{element}"
                         )
         
-        # Separate ICHQ3D Analysis section with some space
+        # Separate ICHQ3D Analysis section
+                # Separate ICHQ3D Analysis section with some space
         st.markdown("---")
         st.subheader("ICHQ3D Analysis")
         ichq3d_analysis = st.checkbox("Request ICHQ3D Analysis")
@@ -662,30 +672,32 @@ with tab1:
             with col1:
                 filename = f"Analysis_Request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                 st.download_button(
-                    label="Download Request Form",
+                    label="📄 Download Request Form",
                     data=doc_io,
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
             
-            # Generate PDF report template if ICHQ3D analysis is requested
+            # Generate HTML report template if ICHQ3D analysis is requested
             if ichq3d_analysis and calculation_data is not None:
                 with col2:
-                    pdf_io = create_pdf_report(
+                    report_buffer = create_pdf_report(
                         product_name, 
                         batch_number, 
                         calculation_data, 
                         daily_dose, 
-                        route_of_administration
+                        route_of_administration,
+                        control_percentage=30
                     )
                     
-                    pdf_filename = f"Analysis_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    html_filename = f"Analysis_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
                     st.download_button(
-                        label="Download Report Template",
-                        data=pdf_io,
-                        file_name=pdf_filename,
-                        mime="application/pdf"
+                        label="📊 Download Report Template (HTML)",
+                        data=report_buffer,
+                        file_name=html_filename,
+                        mime="text/html"
                     )
+                    st.info("💡 Tip: Open the HTML file in your browser and use 'Print to PDF' (Ctrl+P) to create a PDF version.")
             
             # Store in session state
             st.session_state.submitted_requests.append({
@@ -766,8 +778,10 @@ with tab2:
         for element, properties in class_3_elements.items():
             # Pre-select elements that are required for parenteral route
             default_value = properties.get("If not intentionally added", False) if calc_route == "parenteral" else False
+            pde_value = properties.get(f'PDE_{calc_route}')
+            pde_text = f" - PDE {pde_value} µg/day" if pde_value is not None else " - No PDE for this route"
             calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day if available",
+                f"{element}{pde_text}",
                 value=default_value,
                 key=f"calc_element_{element}"
             )
@@ -777,8 +791,10 @@ with tab2:
         st.write("Class 4 elements")
         class_4_elements = {k: v for k, v in elements_table.items() if v["Class"] == "4"}
         for element, properties in class_4_elements.items():
+            pde_value = properties.get(f'PDE_{calc_route}')
+            pde_text = f" - PDE {pde_value} µg/day" if pde_value is not None else " - No PDE for this route"
             calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day if available",
+                f"{element}{pde_text}",
                 value=False,
                 key=f"calc_element_{element}"
             )
@@ -804,7 +820,7 @@ with tab2:
             
             # Display results
             st.subheader("Calculation Results")
-            st.dataframe(calculation_results)
+            st.dataframe(calculation_results, use_container_width=True)
             
             # Export options
             col1, col2 = st.columns(2)
@@ -812,20 +828,21 @@ with tab2:
             with col1:
                 # Export to Excel
                 excel_buffer = io.BytesIO()
-                calculation_results.to_excel(excel_buffer, index=False)
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    calculation_results.to_excel(writer, index=False, sheet_name='Calculations')
                 excel_buffer.seek(0)
                 
                 st.download_button(
-                    label="Export to Excel",
+                    label="📊 Export to Excel",
                     data=excel_buffer,
                     file_name=f"EI_Calculations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             
             with col2:
-                # Generate PDF report template
+                # Generate HTML report template
                 if calc_product_name:
-                    pdf_io = create_pdf_report(
+                    report_buffer = create_pdf_report(
                         calc_product_name, 
                         "Enter batch number", 
                         calculation_results, 
@@ -834,12 +851,16 @@ with tab2:
                         control_percentage=calc_control_percentage
                     )
                     
+                    html_filename = f"EI_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
                     st.download_button(
-                        label="Generate Report Template",
-                        data=pdf_io,
-                        file_name=f"EI_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                        mime="application/pdf"
+                        label="📄 Generate Report Template (HTML)",
+                        data=report_buffer,
+                        file_name=html_filename,
+                        mime="text/html"
                     )
+                    st.info("💡 Tip: Open the HTML file in your browser and use 'Print to PDF' (Ctrl+P) to create a PDF version.")
+                else:
+                    st.warning("Please enter a product name to generate the report template.")
 
 # Request Status Tab
 with tab3:
@@ -849,37 +870,50 @@ with tab3:
         st.info("No requests have been submitted yet.")
     else:
         df = pd.DataFrame(st.session_state.submitted_requests)
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
         
         # Allow viewing calculation details for a specific request
         if len(st.session_state.submitted_requests) > 0:
-            selected_request = st.selectbox(
+            st.subheader("View Request Details")
+            selected_request_idx = st.selectbox(
                 "Select a request to view details:",
                 options=range(len(st.session_state.submitted_requests)),
                 format_func=lambda x: f"{st.session_state.submitted_requests[x]['timestamp']} - {st.session_state.submitted_requests[x]['product']}"
             )
             
             if st.button("View Request Details"):
-                request = st.session_state.submitted_requests[selected_request]
+                request = st.session_state.submitted_requests[selected_request_idx]
+                
                 st.subheader(f"Details for {request['product']}")
                 
-                # Display request information
-                st.write(f"**Requestor:** {request['requestor']}")
-                st.write(f"**Batch:** {request['batch']}")
-                st.write(f"**Daily Dose:** {request['daily_dose']} g")
-                st.write(f"**Route:** {request['route']}")
-                
-                # Recalculate limits for this request
-                selected_elements = {k: v for k, v in elements_table.items() if k in request.get('elements', [])}
-                if selected_elements:
-                    recalc_data = calculate_limits(
-                        selected_elements, 
-                        request['daily_dose'], 
-                        request['route']
-                    )
-                    st.subheader("Elemental Impurity Limits")
-                    st.dataframe(recalc_data)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Requestor:** {request['requestor']}")
+                    st.write(f"**Batch:** {request['batch']}")
+                with col2:
+                    st.write(f"**Daily Dose:** {request['daily_dose']} g")
+                    st.write(f"**Route:** {request['route']}")
+                    st.write(f"**Status:** {request['status']}")
         
-        if st.button("Clear All Requests"):
-            st.session_state.submitted_requests = []
-            st.experimental_rerun()
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Clear All Requests"):
+                st.session_state.submitted_requests = []
+                st.rerun()
+        
+        with col2:
+            if st.button("📥 Export Request History"):
+                if st.session_state.submitted_requests:
+                    history_df = pd.DataFrame(st.session_state.submitted_requests)
+                    csv_buffer = io.StringIO()
+                    history_df.to_csv(csv_buffer, index=False)
+                    csv_buffer.seek(0)
+                    
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv_buffer.getvalue(),
+                        file_name=f"Request_History_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
