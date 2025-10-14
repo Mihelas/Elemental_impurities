@@ -7,11 +7,11 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import numpy as np
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 from reportlab.lib.units import inch
+from io import BytesIO
 
 # Set page config
 st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
@@ -353,18 +353,7 @@ def create_word_document(form_data, calculation_data=None):
 # Function to create PDF report template
 # Function to create PDF report template
 def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
-    """
-    Create a PDF report template for elemental impurities analysis
-    
-    Parameters:
-    product_name (str): Name of the product
-    batch_number (str): Batch number
-    elements_data (DataFrame): DataFrame with calculated limits
-    daily_dose (float): Daily dose in grams
-    route (str): Route of administration
-    control_percentage (int): Control strategy percentage (default 30)
-    """
-    buffer = io.BytesIO()
+    buffer = BytesIO()
     
     # Create PDF document
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -418,7 +407,7 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     content.append(Spacer(1, 0.25*inch))
     
     # Elements to be tested
-    selected_elements = [element for element in elements_data['Element']]
+    selected_elements = list(elements_data['Element'])
     content.append(Paragraph("As defined in the R&D MP ID card, the elements to be tested are " + 
                            ", ".join(selected_elements) + ".", normal_style))
     content.append(Paragraph(f"The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.", 
