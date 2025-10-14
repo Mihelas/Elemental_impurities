@@ -5,47 +5,132 @@ import io
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import numpy as np
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 # Set page config
-st.set_page_config(page_title="Analysis Request System", layout="wide")
+st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
 
 # Initialize session state
 if 'submitted_requests' not in st.session_state:
     st.session_state.submitted_requests = []
+if 'calculated_data' not in st.session_state:
+    st.session_state.calculated_data = None
 
 # Create tabs
-tab1, tab2 = st.tabs(["Request Form", "Request Status"])
+tab1, tab2, tab3 = st.tabs(["Request Form", "Calculations", "Request Status"])
 
-# Predefined elements table
+# Predefined elements table with PDE values
 elements_table = {
-    "Cd": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
-    "Pb": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
-    "As": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
-    "Hg": {"Class": "1", "If intentionally added": True, "If not intentionally added": True},
-    "Co": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
-    "V": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
-    "Ni": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True},
-    "Tl": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Au": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Pd": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Ir": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Os": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Rh": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Ru": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Se": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Ag": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Pt": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False},
-    "Li": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
-    "Sb": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
-    "Ba": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
-    "Mo": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
-    "Cu": {"Class": "3", "If intentionally added": True, "If not intentionally added": True},
-    "Sn": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
-    "Cr": {"Class": "3", "If intentionally added": True, "If not intentionally added": False},
+    "Cd": {"Class": "1", "If intentionally added": True, "If not intentionally added": True, 
+           "PDE_oral": 5, "PDE_parenteral": 2, "PDE_inhalation": 3, "PDE_cutaneous": 20},
+    "Pb": {"Class": "1", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 5, "PDE_parenteral": 5, "PDE_inhalation": 5, "PDE_cutaneous": 50},
+    "As": {"Class": "1", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 15, "PDE_parenteral": 15, "PDE_inhalation": 2, "PDE_cutaneous": 30},
+    "Hg": {"Class": "1", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 30, "PDE_parenteral": 3, "PDE_inhalation": 1, "PDE_cutaneous": 30},
+    "Co": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 50, "PDE_parenteral": 5, "PDE_inhalation": 3, "PDE_cutaneous": 50},
+    "V": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Ni": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 200, "PDE_parenteral": 20, "PDE_inhalation": 6, "PDE_cutaneous": 200},
+    "Tl": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 8, "PDE_parenteral": 8, "PDE_inhalation": 8, "PDE_cutaneous": 8},
+    "Au": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 300, "PDE_parenteral": 300, "PDE_inhalation": 3, "PDE_cutaneous": 3000},
+    "Pd": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Ir": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Os": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Rh": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Ru": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Se": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 150, "PDE_parenteral": 80, "PDE_inhalation": 130, "PDE_cutaneous": 800},
+    "Ag": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 150, "PDE_parenteral": 15, "PDE_inhalation": 7, "PDE_cutaneous": 150},
+    "Pt": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+    "Li": {"Class": "3", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 550, "PDE_parenteral": 250, "PDE_inhalation": 25, "PDE_cutaneous": 2500},
+    "Sb": {"Class": "3", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 1200, "PDE_parenteral": 90, "PDE_inhalation": 20, "PDE_cutaneous": 900},
+    "Ba": {"Class": "3", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 1400, "PDE_parenteral": 700, "PDE_inhalation": 300, "PDE_cutaneous": 7000},
+    "Mo": {"Class": "3", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 3000, "PDE_parenteral": 1500, "PDE_inhalation": 10, "PDE_cutaneous": 15000},
+    "Cu": {"Class": "3", "If intentionally added": True, "If not intentionally added": True,
+           "PDE_oral": 3000, "PDE_parenteral": 300, "PDE_inhalation": 30, "PDE_cutaneous": 3000},
+    "Sn": {"Class": "3", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 6000, "PDE_parenteral": 600, "PDE_inhalation": 60, "PDE_cutaneous": 6000},
+    "Cr": {"Class": "3", "If intentionally added": True, "If not intentionally added": False,
+           "PDE_oral": 11000, "PDE_parenteral": 1100, "PDE_inhalation": 3, "PDE_cutaneous": 11000},
+    "Fe": {"Class": "4", "If intentionally added": False, "If not intentionally added": False,
+           "PDE_oral": None, "PDE_parenteral": 13000, "PDE_inhalation": None, "PDE_cutaneous": None},
+    "Mn": {"Class": "3", "If intentionally added": False, "If not intentionally added": False,
+           "PDE_oral": 2500, "PDE_parenteral": 250, "PDE_inhalation": 25, "PDE_cutaneous": None},
+    "Zn": {"Class": "3", "If intentionally added": False, "If not intentionally added": False,
+           "PDE_oral": 13000, "PDE_parenteral": 1300, "PDE_inhalation": 130, "PDE_cutaneous": None},
 }
 
+# Function to calculate MPC and control strategy limits
+def calculate_limits(elements, daily_dose, route="parenteral", control_percentage=30):
+    """
+    Calculate Maximum Permitted Concentration (MPC) and control strategy limits
+    
+    Parameters:
+    elements (dict): Dictionary of elements with PDE values
+    daily_dose (float): Daily dose in grams
+    route (str): Administration route (oral, parenteral, inhalation, cutaneous)
+    control_percentage (float): Percentage of MPC for control strategy limit
+    
+    Returns:
+    DataFrame with calculated values
+    """
+    results = []
+    
+    for element, properties in elements.items():
+        pde_key = f"PDE_{route}"
+        if pde_key in properties and properties[pde_key] is not None:
+            pde = properties[pde_key]
+            mpc = pde / daily_dose
+            control_limit = mpc * (control_percentage / 100)
+            
+            # Round values appropriately
+            if mpc < 1:
+                mpc_rounded = round(mpc, 2)
+                control_limit_rounded = round(control_limit, 2)
+            elif mpc < 10:
+                mpc_rounded = round(mpc, 1)
+                control_limit_rounded = round(control_limit, 1)
+            else:
+                mpc_rounded = round(mpc)
+                control_limit_rounded = round(control_limit)
+            
+            results.append({
+                "Element": element,
+                "Class": properties["Class"],
+                f"PDE ({route}) µg/day": pde,
+                "MPC µg/g": mpc_rounded,
+                f"Control Strategy Limit ({control_percentage}%) µg/g": control_limit_rounded,
+                "MPC ng/mL": mpc_rounded * 1000,
+                f"Control Strategy Limit ({control_percentage}%) ng/mL": control_limit_rounded * 1000
+            })
+    
+    return pd.DataFrame(results)
+
 # Function to create Word document
-def create_word_document(form_data):
+def create_word_document(form_data, calculation_data=None):
     doc = Document()
     
     # Set margins
@@ -218,6 +303,35 @@ def create_word_document(form_data):
     p.add_run("Method reference and/or specification to be applied if relevant (Veeva Vault or Pharmacopoeia reference):").bold = True
     p = doc.add_paragraph(form_data['method_reference'])
     
+    # Add calculation data if available
+    if calculation_data is not None and form_data['ichq3d_analysis']:
+        doc.add_paragraph()
+        doc.add_heading('ELEMENTAL IMPURITIES CALCULATION', level=1)
+        
+        p = doc.add_paragraph()
+        p.add_run(f"Daily dose: {form_data['daily_dose']} g").bold = True
+        p.add_run(f" ({form_data['route_of_administration']} administration)")
+        
+        # Add calculation table
+        table = doc.add_table(rows=len(calculation_data) + 1, cols=5)
+        table.style = 'Table Grid'
+        
+        # Header row
+        headers = ["Element", "Class", "PDE (µg/day)", "MPC (µg/g)", "Control Strategy Limit (ng/mL)"]
+        for i, header in enumerate(headers):
+            cell = table.cell(0, i)
+            cell.text = header
+            run = cell.paragraphs[0].runs[0]
+            run.bold = True
+        
+        # Data rows
+        for i, row in enumerate(calculation_data.itertuples(), 1):
+            table.cell(i, 0).text = row.Element
+            table.cell(i, 1).text = row.Class
+            table.cell(i, 2).text = str(row._3)  # PDE column
+            table.cell(i, 3).text = str(row._4)  # MPC column
+            table.cell(i, 4).text = str(row._7)  # Control Strategy Limit column
+    
     # Add some space
     doc.add_paragraph()
     
@@ -235,6 +349,170 @@ def create_word_document(form_data):
     doc.save(doc_io)
     doc_io.seek(0)
     return doc_io
+
+# Function to create PDF report template
+def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route):
+    buffer = io.BytesIO()
+    
+    # Create PDF document
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        alignment=1,  # Center alignment
+        fontSize=14,
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Heading2'],
+        alignment=1,  # Center alignment
+        fontSize=12,
+    )
+    
+    normal_style = styles['Normal']
+    
+    # Build content
+    content = []
+    
+    # Header
+    content.append(Paragraph("Sanofi R&D Vitry sur Seine", title_style))
+    content.append(Paragraph("Global CMC Development", subtitle_style))
+    content.append(Paragraph("BioAnalytics/Elemental Analysis", subtitle_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    content.append(Paragraph("ANALYTICAL RESULTS", title_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Product information
+    content.append(Paragraph(f"{product_name}", title_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    content.append(Paragraph("Drug Product", subtitle_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    content.append(Paragraph(f"Elemental impurities analysis in {product_name} according to ICH Q3D criteria", normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    content.append(Paragraph(f"Reference of analysis: AR-{datetime.now().strftime('%Y-%m')}", normal_style))
+    content.append(Spacer(1, 0.5*inch))
+    
+    # Purpose
+    content.append(Paragraph("Purpose: Determination of elemental impurities by ICP-MS in " + 
+                           f"{product_name}, according to ICH Q3D.", normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Elements to be tested
+    selected_elements = [element for element in elements_data['Element']]
+    content.append(Paragraph("As defined in the R&D MP ID card, the elements to be tested are " + 
+                           ", ".join(selected_elements) + ".", normal_style))
+    content.append(Paragraph(f"The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.", 
+                           normal_style))
+    content.append(Spacer(1, 0.5*inch))
+    
+    # Batch reference
+    content.append(Paragraph("1. Batch reference", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph(batch_number, normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Sample preparation (placeholder)
+    content.append(Paragraph("2. Sample preparation", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph("3 test solutions including one spiked are prepared.", normal_style))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph("Dilution: qsp 10mL with acidified water (0.4% HNO3).", normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # ICP-MS (placeholder)
+    content.append(Paragraph("3. ICP-MS", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph("ICP-MS make and model: Thermo Scientific – iCAP RQ", normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Results table
+    content.append(Paragraph("4. RESULTS", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    
+    # Create results table with placeholder values
+    results_data = [
+        [f"{product_name}", ""],
+        ["Element", f"Batch {batch_number}"],
+    ]
+    
+    # Add a row for each element with placeholder result "< reporting limit"
+    for element in selected_elements:
+        # Get the control limit for this element
+        element_data = elements_data[elements_data['Element'] == element]
+        if not element_data.empty:
+            control_limit = element_data.iloc[0]['Control Strategy Limit (30%) µg/g']
+            results_data.append([element, f"< {control_limit}"])
+    
+    # Create the table
+    results_table = Table(results_data)
+    results_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('SPAN', (0, 0), (1, 0)),  # Span the product name across both columns
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 1), (1, 1), colors.lightgrey),
+    ]))
+    
+    content.append(results_table)
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Analysis information
+    content.append(Paragraph(f"Analysis date: {datetime.now().strftime('%d-%b-%Y')}", normal_style))
+    content.append(Paragraph(f"Route of administration: {route.capitalize()}", normal_style))
+    content.append(Paragraph(f"Daily dose: {daily_dose} g of {product_name}", normal_style))
+    content.append(Spacer(1, 0.5*inch))
+    
+    # Conclusion
+    content.append(Paragraph("5. CONCLUSION", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph(f"The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.", normal_style))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph(f"For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold (30% of PDE).", normal_style))
+    content.append(Spacer(1, 0.5*inch))
+    
+    # Appendix with PDE table
+    content.append(Paragraph("6. APPENDIX", styles['Heading2']))
+    content.append(Spacer(1, 0.1*inch))
+    content.append(Paragraph("Table of PDE and permitted concentrations of Elemental Impurities for option 3:", normal_style))
+    content.append(Spacer(1, 0.25*inch))
+    
+    # Create PDE table
+    pde_headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", "30% PDE\nµg/g", "Reporting Limit\nµg/g"]
+    
+    pde_data = [pde_headers]
+    
+    for _, row in elements_data.iterrows():
+        pde_data.append([
+            row['Element'],
+            row['Class'],
+            str(row[f'PDE ({route}) µg/day']),
+            str(row['MPC µg/g']),
+            str(row[f'Control Strategy Limit (30%) µg/g']),
+            str(row[f'Control Strategy Limit (30%) µg/g'])  # Reporting limit = control limit
+        ])
+    
+    pde_table = Table(pde_data)
+    pde_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    content.append(pde_table)
+    
+    # Build the PDF
+    doc.build(content)
+    buffer.seek(0)
+    return buffer
 
 # Request Form Tab
 with tab1:
@@ -273,6 +551,17 @@ with tab1:
         shipment_conditions = st.text_input("Shipment Conditions")
         storage_conditions = st.text_input("Storage Conditions")
         
+        # New fields for ICH Q3D calculations
+        st.subheader("ICH Q3D Information")
+        col1, col2 = st.columns(2)
+        with col1:
+            daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=1.0,
+                                        help="Maximum daily dose in grams")
+        with col2:
+            route_of_administration = st.selectbox("Route of Administration", 
+                                                ["parenteral", "oral", "inhalation", "cutaneous"],
+                                                help="Route of administration affects PDE values")
+        
         st.subheader("Analysis Information")
         gmp_analysis = st.radio("GMP Analysis", ["Yes", "No"])
         gmp_purpose = st.radio("Purpose", ["For Release", "For Information"]) if gmp_analysis == "Yes" else "N/A"
@@ -310,7 +599,7 @@ with tab1:
         if ichq3d_analysis:
             st.info("""
             For ICHQ3D request, documents to be provided:
-            * Phase 1 and 2: R&D Medecinal product ID Card (SD-000133)
+            * Phase 1 and 2: R&D Medicinal product ID Card (SD-000133)
             * Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)
             """)
         
@@ -337,6 +626,8 @@ with tab1:
                 "safety_risk": safety_risk,
                 "shipment_conditions": shipment_conditions,
                 "storage_conditions": storage_conditions,
+                "daily_dose": daily_dose,
+                "route_of_administration": route_of_administration,
                 "gmp_analysis": gmp_analysis,
                 "gmp_purpose": gmp_purpose,
                 "analysis_type": analysis_type,
@@ -345,34 +636,205 @@ with tab1:
                 "method_reference": method_reference,
             }
             
+            # Calculate limits if ICHQ3D analysis is requested
+            calculation_data = None
+            if ichq3d_analysis:
+                # Filter elements that are selected
+                selected_elements = {k: v for k, v in elements_table.items() if elements_selected.get(k, False)}
+                calculation_data = calculate_limits(selected_elements, daily_dose, route_of_administration)
+                st.session_state.calculated_data = calculation_data
+            
             # Generate document
-            doc_io = create_word_document(form_data)
+            doc_io = create_word_document(form_data, calculation_data)
             
             # Success message
             st.success("Document generated successfully!")
             
-            # Download button (outside the form)
-            filename = f"Analysis_Request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-            st.download_button(
-                label="Download Filled Template",
-                data=doc_io,
-                file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            # Download buttons (outside the form)
+            col1, col2 = st.columns(2)
+            with col1:
+                filename = f"Analysis_Request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                st.download_button(
+                    label="Download Request Form",
+                    data=doc_io,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+            
+            # Generate PDF report template if ICHQ3D analysis is requested
+            if ichq3d_analysis and calculation_data is not None:
+                with col2:
+                    pdf_io = create_pdf_report(
+                        product_name, 
+                        batch_number, 
+                        calculation_data, 
+                        daily_dose, 
+                        route_of_administration
+                    )
+                    
+                    pdf_filename = f"Analysis_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    st.download_button(
+                        label="Download Report Template",
+                        data=pdf_io,
+                        file_name=pdf_filename,
+                        mime="application/pdf"
+                    )
             
             # Store in session state
             st.session_state.submitted_requests.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "product": product_name,
                 "requestor": requestor_name,
-                "status": "Submitted"
+                "batch": batch_number,
+                "status": "Submitted",
+                "daily_dose": daily_dose,
+                "route": route_of_administration
             })
             
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
 
-# Request Status Tab
+# Calculations Tab
 with tab2:
+    st.title("Elemental Impurities Calculations")
+    
+    st.write("This tab allows you to perform ICH Q3D calculations for elemental impurities.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        calc_product_name = st.text_input("Product Name", key="calc_product_name")
+        calc_daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=1.0, key="calc_daily_dose")
+    
+    with col2:
+        calc_route = st.selectbox("Route of Administration", 
+                                ["parenteral", "oral", "inhalation", "cutaneous"],
+                                key="calc_route")
+        calc_control_percentage = st.slider("Control Strategy Limit (%)", min_value=10, max_value=50, value=30, key="calc_control_percentage")
+    
+    # Element selection for calculations
+    st.subheader("Elements to Include")
+    
+    # Create tabs for different element classes
+    class_tabs = st.tabs(["Class 1", "Class 2A", "Class 2B", "Class 3", "Class 4"])
+    
+    calc_elements_selected = {}
+    
+    # Class 1 tab
+    with class_tabs[0]:
+        st.write("Class 1 elements (always required for parenteral products)")
+        class_1_elements = {k: v for k, v in elements_table.items() if v["Class"] == "1"}
+        for element, properties in class_1_elements.items():
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
+                value=True,
+                key=f"calc_element_{element}"
+            )
+    
+    # Class 2A tab
+    with class_tabs[1]:
+        st.write("Class 2A elements (always required for parenteral products)")
+        class_2a_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2A"}
+        for element, properties in class_2a_elements.items():
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
+                value=True,
+                key=f"calc_element_{element}"
+            )
+    
+    # Class 2B tab
+    with class_tabs[2]:
+        st.write("Class 2B elements (required if intentionally added)")
+        class_2b_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2B"}
+        for element, properties in class_2b_elements.items():
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
+                value=False,
+                key=f"calc_element_{element}"
+            )
+    
+    # Class 3 tab
+    with class_tabs[3]:
+        st.write("Class 3 elements (some required for parenteral products)")
+        class_3_elements = {k: v for k, v in elements_table.items() if v["Class"] == "3"}
+        for element, properties in class_3_elements.items():
+            # Pre-select elements that are required for parenteral route
+            default_value = properties.get("If not intentionally added", False) if calc_route == "parenteral" else False
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day if available",
+                value=default_value,
+                key=f"calc_element_{element}"
+            )
+    
+    # Class 4 tab
+    with class_tabs[4]:
+        st.write("Class 4 elements")
+        class_4_elements = {k: v for k, v in elements_table.items() if v["Class"] == "4"}
+        for element, properties in class_4_elements.items():
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day if available",
+                value=False,
+                key=f"calc_element_{element}"
+            )
+    
+    # Calculate button
+    if st.button("Calculate Limits"):
+        # Filter elements that are selected
+        selected_elements = {k: v for k, v in elements_table.items() if calc_elements_selected.get(k, False)}
+        
+        if not selected_elements:
+            st.warning("Please select at least one element.")
+        else:
+            # Calculate limits
+            calculation_results = calculate_limits(
+                selected_elements, 
+                calc_daily_dose, 
+                calc_route, 
+                calc_control_percentage
+            )
+            
+            # Store in session state
+            st.session_state.calculated_data = calculation_results
+            
+            # Display results
+            st.subheader("Calculation Results")
+            st.dataframe(calculation_results)
+            
+            # Export options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Export to Excel
+                excel_buffer = io.BytesIO()
+                calculation_results.to_excel(excel_buffer, index=False)
+                excel_buffer.seek(0)
+                
+                st.download_button(
+                    label="Export to Excel",
+                    data=excel_buffer,
+                    file_name=f"EI_Calculations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            
+            with col2:
+                # Generate PDF report template
+                if calc_product_name:
+                    pdf_io = create_pdf_report(
+                        calc_product_name, 
+                        "Enter batch number", 
+                        calculation_results, 
+                        calc_daily_dose, 
+                        calc_route
+                    )
+                    
+                    st.download_button(
+                        label="Generate Report Template",
+                        data=pdf_io,
+                        file_name=f"EI_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
+
+# Request Status Tab
+with tab3:
     st.title("Request Status")
     
     if not st.session_state.submitted_requests:
@@ -380,6 +842,35 @@ with tab2:
     else:
         df = pd.DataFrame(st.session_state.submitted_requests)
         st.dataframe(df)
+        
+        # Allow viewing calculation details for a specific request
+        if len(st.session_state.submitted_requests) > 0:
+            selected_request = st.selectbox(
+                "Select a request to view details:",
+                options=range(len(st.session_state.submitted_requests)),
+                format_func=lambda x: f"{st.session_state.submitted_requests[x]['timestamp']} - {st.session_state.submitted_requests[x]['product']}"
+            )
+            
+            if st.button("View Request Details"):
+                request = st.session_state.submitted_requests[selected_request]
+                st.subheader(f"Details for {request['product']}")
+                
+                # Display request information
+                st.write(f"**Requestor:** {request['requestor']}")
+                st.write(f"**Batch:** {request['batch']}")
+                st.write(f"**Daily Dose:** {request['daily_dose']} g")
+                st.write(f"**Route:** {request['route']}")
+                
+                # Recalculate limits for this request
+                selected_elements = {k: v for k, v in elements_table.items() if k in request.get('elements', [])}
+                if selected_elements:
+                    recalc_data = calculate_limits(
+                        selected_elements, 
+                        request['daily_dose'], 
+                        request['route']
+                    )
+                    st.subheader("Elemental Impurity Limits")
+                    st.dataframe(recalc_data)
         
         if st.button("Clear All Requests"):
             st.session_state.submitted_requests = []
