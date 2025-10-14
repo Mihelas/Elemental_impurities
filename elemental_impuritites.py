@@ -838,7 +838,7 @@ with tab2:
                         "Enter batch number", 
                         calculation_results, 
                         calc_daily_dose, 
-                        calc_route
+                        calc_route,
                         control_percentage=calc_control_percentage
                     )
                     
