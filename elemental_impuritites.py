@@ -351,7 +351,19 @@ def create_word_document(form_data, calculation_data=None):
     return doc_io
 
 # Function to create PDF report template
-def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route):
+# Function to create PDF report template
+def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
+    """
+    Create a PDF report template for elemental impurities analysis
+    
+    Parameters:
+    product_name (str): Name of the product
+    batch_number (str): Batch number
+    elements_data (DataFrame): DataFrame with calculated limits
+    daily_dose (float): Daily dose in grams
+    route (str): Route of administration
+    control_percentage (int): Control strategy percentage (default 30)
+    """
     buffer = io.BytesIO()
     
     # Create PDF document
@@ -443,12 +455,15 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
         ["Element", f"Batch {batch_number}"],
     ]
     
+    # Determine the correct column name for control limits
+    control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g'
+    
     # Add a row for each element with placeholder result "< reporting limit"
     for element in selected_elements:
         # Get the control limit for this element
         element_data = elements_data[elements_data['Element'] == element]
         if not element_data.empty:
-            control_limit = element_data.iloc[0]['Control Strategy Limit (30%) µg/g']
+            control_limit = element_data.iloc[0][control_limit_col]
             results_data.append([element, f"< {control_limit}"])
     
     # Create the table
@@ -475,7 +490,7 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     content.append(Spacer(1, 0.1*inch))
     content.append(Paragraph(f"The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.", normal_style))
     content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph(f"For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold (30% of PDE).", normal_style))
+    content.append(Paragraph(f"For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).", normal_style))
     content.append(Spacer(1, 0.5*inch))
     
     # Appendix with PDE table
@@ -485,7 +500,7 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     content.append(Spacer(1, 0.25*inch))
     
     # Create PDE table
-    pde_headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", "30% PDE\nµg/g", "Reporting Limit\nµg/g"]
+    pde_headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", f"{control_percentage}% PDE\nµg/g", "Reporting Limit\nµg/g"]
     
     pde_data = [pde_headers]
     
@@ -495,8 +510,8 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
             row['Class'],
             str(row[f'PDE ({route}) µg/day']),
             str(row['MPC µg/g']),
-            str(row[f'Control Strategy Limit (30%) µg/g']),
-            str(row[f'Control Strategy Limit (30%) µg/g'])  # Reporting limit = control limit
+            str(row[control_limit_col]),
+            str(row[control_limit_col])  # Reporting limit = control limit
         ])
     
     pde_table = Table(pde_data)
@@ -824,6 +839,7 @@ with tab2:
                         calculation_results, 
                         calc_daily_dose, 
                         calc_route
+                        control_percentage=calc_control_percentage
                     )
                     
                     st.download_button(
