@@ -6,12 +6,7 @@ from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import numpy as np
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.units import inch
-from io import BytesIO
+from fpdf import FPDF
 
 # Set page config
 st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
@@ -353,168 +348,150 @@ def create_word_document(form_data, calculation_data=None):
 # Function to create PDF report template
 # Function to create PDF report template
 def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
-    buffer = BytesIO()
+    """
+    Create a PDF report template for elemental impurities analysis using FPDF
+    """
+    class PDF(FPDF):
+        def header(self):
+            # Header
+            self.set_font('Arial', 'B', 14)
+            self.cell(0, 10, 'Sanofi R&D Vitry sur Seine', 0, 1, 'C')
+            self.set_font('Arial', 'B', 12)
+            self.cell(0, 6, 'Global CMC Development', 0, 1, 'C')
+            self.cell(0, 6, 'BioAnalytics/Elemental Analysis', 0, 1, 'C')
+            self.ln(10)
+            self.set_font('Arial', 'B', 14)
+            self.cell(0, 10, 'ANALYTICAL RESULTS', 0, 1, 'C')
+            self.ln(5)
+            self.set_font('Arial', 'B', 14)
+            self.cell(0, 10, product_name, 0, 1, 'C')
+            self.set_font('Arial', 'B', 12)
+            self.cell(0, 6, 'Drug Product', 0, 1, 'C')
+            self.ln(5)
+            
+        def footer(self):
+            # Footer
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
     
-    # Create PDF document
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
+    # Create PDF object
+    pdf = PDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
     
-    # Create custom styles
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        alignment=1,  # Center alignment
-        fontSize=14,
-    )
+    # Set font
+    pdf.set_font('Arial', '', 11)
     
-    subtitle_style = ParagraphStyle(
-        'Subtitle',
-        parent=styles['Heading2'],
-        alignment=1,  # Center alignment
-        fontSize=12,
-    )
+    # Purpose and elements
+    pdf.cell(0, 6, f'Elemental impurities analysis in {product_name} according to ICH Q3D criteria', 0, 1)
+    pdf.cell(0, 6, f'Reference of analysis: AR-{datetime.now().strftime("%Y-%m")}', 0, 1)
+    pdf.ln(10)
     
-    normal_style = styles['Normal']
-    
-    # Build content
-    content = []
-    
-    # Header
-    content.append(Paragraph("Sanofi R&D Vitry sur Seine", title_style))
-    content.append(Paragraph("Global CMC Development", subtitle_style))
-    content.append(Paragraph("BioAnalytics/Elemental Analysis", subtitle_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    content.append(Paragraph("ANALYTICAL RESULTS", title_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    # Product information
-    content.append(Paragraph(f"{product_name}", title_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    content.append(Paragraph("Drug Product", subtitle_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    content.append(Paragraph(f"Elemental impurities analysis in {product_name} according to ICH Q3D criteria", normal_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    content.append(Paragraph(f"Reference of analysis: AR-{datetime.now().strftime('%Y-%m')}", normal_style))
-    content.append(Spacer(1, 0.5*inch))
-    
-    # Purpose
-    content.append(Paragraph("Purpose: Determination of elemental impurities by ICP-MS in " + 
-                           f"{product_name}, according to ICH Q3D.", normal_style))
-    content.append(Spacer(1, 0.25*inch))
+    pdf.cell(0, 6, f'Purpose: Determination of elemental impurities by ICP-MS in {product_name}, according to ICH Q3D.', 0, 1)
+    pdf.ln(5)
     
     # Elements to be tested
     selected_elements = list(elements_data['Element'])
-    content.append(Paragraph("As defined in the R&D MP ID card, the elements to be tested are " + 
-                           ", ".join(selected_elements) + ".", normal_style))
-    content.append(Paragraph(f"The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.", 
-                           normal_style))
-    content.append(Spacer(1, 0.5*inch))
+    pdf.multi_cell(0, 6, f'As defined in the R&D MP ID card, the elements to be tested are {", ".join(selected_elements)}.', 0)
+    pdf.cell(0, 6, f'The maximum daily dose administered to the patient is {daily_dose} g of {product_name}.', 0, 1)
+    pdf.ln(10)
     
     # Batch reference
-    content.append(Paragraph("1. Batch reference", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph(batch_number, normal_style))
-    content.append(Spacer(1, 0.25*inch))
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '1. Batch reference', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(0, 6, batch_number, 0, 1)
+    pdf.ln(5)
     
-    # Sample preparation (placeholder)
-    content.append(Paragraph("2. Sample preparation", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph("3 test solutions including one spiked are prepared.", normal_style))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph("Dilution: qsp 10mL with acidified water (0.4% HNO3).", normal_style))
-    content.append(Spacer(1, 0.25*inch))
+    # Sample preparation
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '2. Sample preparation', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(0, 6, '3 test solutions including one spiked are prepared.', 0, 1)
+    pdf.cell(0, 6, 'Dilution: qsp 10mL with acidified water (0.4% HNO3).', 0, 1)
+    pdf.ln(5)
     
-    # ICP-MS (placeholder)
-    content.append(Paragraph("3. ICP-MS", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph("ICP-MS make and model: Thermo Scientific – iCAP RQ", normal_style))
-    content.append(Spacer(1, 0.25*inch))
+    # ICP-MS
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '3. ICP-MS', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(0, 6, 'ICP-MS make and model: Thermo Scientific – iCAP RQ', 0, 1)
+    pdf.ln(5)
+    
+    # Results
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '4. RESULTS', 0, 1)
+    pdf.ln(5)
     
     # Results table
-    content.append(Paragraph("4. RESULTS", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
+    pdf.set_font('Arial', 'B', 11)
     
-    # Create results table with placeholder values
-    results_data = [
-        [f"{product_name}", ""],
-        ["Element", f"Batch {batch_number}"],
-    ]
+    # Table header
+    pdf.cell(90, 10, product_name, 1, 0, 'C')
+    pdf.cell(90, 10, '', 1, 1, 'C')
     
-    # Determine the correct column name for control limits
+    pdf.cell(90, 10, 'Element', 1, 0, 'C')
+    pdf.cell(90, 10, f'Batch {batch_number}', 1, 1, 'C')
+    
+    # Table data
+    pdf.set_font('Arial', '', 11)
     control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g'
     
-    # Add a row for each element with placeholder result "< reporting limit"
     for element in selected_elements:
-        # Get the control limit for this element
         element_data = elements_data[elements_data['Element'] == element]
         if not element_data.empty:
             control_limit = element_data.iloc[0][control_limit_col]
-            results_data.append([element, f"< {control_limit}"])
+            pdf.cell(90, 10, element, 1, 0, 'C')
+            pdf.cell(90, 10, f'< {control_limit}', 1, 1, 'C')
     
-    # Create the table
-    results_table = Table(results_data)
-    results_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('SPAN', (0, 0), (1, 0)),  # Span the product name across both columns
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BACKGROUND', (0, 1), (1, 1), colors.lightgrey),
-    ]))
-    
-    content.append(results_table)
-    content.append(Spacer(1, 0.25*inch))
+    pdf.ln(5)
     
     # Analysis information
-    content.append(Paragraph(f"Analysis date: {datetime.now().strftime('%d-%b-%Y')}", normal_style))
-    content.append(Paragraph(f"Route of administration: {route.capitalize()}", normal_style))
-    content.append(Paragraph(f"Daily dose: {daily_dose} g of {product_name}", normal_style))
-    content.append(Spacer(1, 0.5*inch))
+    pdf.cell(0, 6, f'Analysis date: {datetime.now().strftime("%d-%b-%Y")}', 0, 1)
+    pdf.cell(0, 6, f'Route of administration: {route.capitalize()}', 0, 1)
+    pdf.cell(0, 6, f'Daily dose: {daily_dose} g of {product_name}', 0, 1)
+    pdf.ln(10)
     
     # Conclusion
-    content.append(Paragraph("5. CONCLUSION", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph(f"The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.", normal_style))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph(f"For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).", normal_style))
-    content.append(Spacer(1, 0.5*inch))
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '5. CONCLUSION', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.multi_cell(0, 6, f'The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.')
+    pdf.multi_cell(0, 6, f'For the {len(selected_elements)} tested elements {", ".join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).')
+    pdf.ln(10)
     
-    # Appendix with PDE table
-    content.append(Paragraph("6. APPENDIX", styles['Heading2']))
-    content.append(Spacer(1, 0.1*inch))
-    content.append(Paragraph("Table of PDE and permitted concentrations of Elemental Impurities for option 3:", normal_style))
-    content.append(Spacer(1, 0.25*inch))
+    # Appendix
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 6, '6. APPENDIX', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(0, 6, 'Table of PDE and permitted concentrations of Elemental Impurities for option 3:', 0, 1)
+    pdf.ln(5)
     
-    # Create PDE table
-    pde_headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", f"{control_percentage}% PDE\nµg/g", "Reporting Limit\nµg/g"]
+    # PDE table
+    pdf.set_font('Arial', 'B', 9)
+    col_width = 180/6  # 6 columns
     
-    pde_data = [pde_headers]
+    # Table header
+    headers = ["Element", "Class", f"{route.capitalize()}\nPDE\nµg/day", f"{product_name}\nPDE\nµg/g", f"{control_percentage}% PDE\nµg/g", "Reporting Limit\nµg/g"]
+    for header in headers:
+        pdf.cell(col_width, 10, header, 1, 0, 'C')
+    pdf.ln()
     
+    # Table data
+    pdf.set_font('Arial', '', 9)
     for _, row in elements_data.iterrows():
-        pde_data.append([
-            row['Element'],
-            row['Class'],
-            str(row[f'PDE ({route}) µg/day']),
-            str(row['MPC µg/g']),
-            str(row[control_limit_col]),
-            str(row[control_limit_col])  # Reporting limit = control limit
-        ])
+        pdf.cell(col_width, 10, row['Element'], 1, 0, 'C')
+        pdf.cell(col_width, 10, row['Class'], 1, 0, 'C')
+        pdf.cell(col_width, 10, str(row[f'PDE ({route}) µg/day']), 1, 0, 'C')
+        pdf.cell(col_width, 10, str(row['MPC µg/g']), 1, 0, 'C')
+        pdf.cell(col_width, 10, str(row[control_limit_col]), 1, 0, 'C')
+        pdf.cell(col_width, 10, str(row[control_limit_col]), 1, 0, 'C')
+        pdf.ln()
     
-    pde_table = Table(pde_data)
-    pde_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    
-    content.append(pde_table)
-    
-    # Build the PDF
-    doc.build(content)
+    # Output to BytesIO
+    buffer = io.BytesIO()
+    pdf.output(buffer)
     buffer.seek(0)
     return buffer
 
