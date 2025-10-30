@@ -565,7 +565,7 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
         ws.cell(row=row, column=2).value = batch_name
         ws.cell(row=row, column=2).font = normal_font
         ws.cell(row=row, column=2).alignment = center_align
-        ws.cell(row=row, column=2).border = thin
+        ws.cell(row=row, column=2).border = thin_border
         ws.cell(row=row, column=2).border = thin_border
         
         # Add measured values for each element
