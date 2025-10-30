@@ -76,7 +76,6 @@ elements_table = {
     "Zn": {"Class": "3", "If intentionally added": False, "If not intentionally added": False,
            "PDE_oral": 13000, "PDE_parenteral": 1300, "PDE_inhalation": 130, "PDE_cutaneous": None},
 }
-
 # Function to calculate MPC and control strategy limits
 def calculate_limits(elements, daily_dose, route="parenteral", control_percentage=30):
     """
@@ -97,6 +96,9 @@ def calculate_limits(elements, daily_dose, route="parenteral", control_percentag
         pde_key = f"PDE_{route}"
         if pde_key in properties and properties[pde_key] is not None:
             pde = properties[pde_key]
+            if daily_dose == 0:
+                st.error("Daily dose cannot be zero for calculation.")
+                continue
             mpc = pde / daily_dose
             control_limit = mpc * (control_percentage / 100)
             
@@ -122,6 +124,67 @@ def calculate_limits(elements, daily_dose, route="parenteral", control_percentag
             })
     
     return pd.DataFrame(results)
+
+# NEW FUNCTION: Calculate element results based on measured values
+def calculate_element_results(measured_value, daily_dose, pde, control_percentage=30):
+    """
+    Calculate element results based on measured values and parameters
+
+    Parameters:
+    measured_value (float): Lab analysis result (µg/g)
+    daily_dose (float): Daily dose in grams
+    pde (float): PDE value for the element
+    control_percentage (float): Control strategy percentage (default 30%)
+
+    Returns:
+    dict: Calculation results including compliance status
+    """
+    try:
+        # Calculate MPC
+        if daily_dose == 0:
+            st.error("Daily dose cannot be zero for calculation.")
+            return None
+        mpc = pde / daily_dose
+
+        # Calculate control strategy limit
+        control_limit = mpc * (control_percentage / 100)
+
+        # Calculate exposure (µg/g * g = µg/day)
+        exposure = measured_value * daily_dose
+
+        # Control threshold (control_percentage% of PDE)
+        control_threshold = pde * (control_percentage / 100)
+
+        # Determine compliance - compare measured value with control limit
+        is_compliant = measured_value <= control_limit
+
+        # Determine compliance - compare exposure with control threshold
+        is_compliant = exposure <= control_threshold
+
+        # Round values appropriately
+        if mpc < 1:
+            mpc_rounded = round(mpc, 4)
+            control_limit_rounded = round(control_limit, 4)
+        elif mpc < 10:
+            mpc_rounded = round(mpc, 2)
+            control_limit_rounded = round(control_limit, 2)
+        else:
+            mpc_rounded = round(mpc, 1)
+            control_limit_rounded = round(control_limit, 1)
+
+        exposure_rounded = round(exposure, 4)
+
+        return {
+            'measured_value': measured_value,
+            'exposure': exposure_rounded,
+            'mpc': mpc_rounded,
+            'control_limit': control_limit_rounded,
+            'control_threshold': control_threshold,
+            'is_compliant': is_compliant
+        }
+    except Exception as e:
+        st.error(f"Calculation error: {str(e)}")
+        return None
 
 # Function to create Word document
 def create_word_document(form_data, calculation_data=None):
@@ -317,14 +380,14 @@ def create_word_document(form_data, calculation_data=None):
             cell.text = header
             run = cell.paragraphs[0].runs[0]
             run.bold = True
-        
+
         # Data rows
-        for i, row in enumerate(calculation_data.itertuples(), 1):
-            table.cell(i, 0).text = row.Element
-            table.cell(i, 1).text = row.Class
-            table.cell(i, 2).text = str(row._3)  # PDE column
-            table.cell(i, 3).text = str(row._4)  # MPC column
-            table.cell(i, 4).text = str(row._7)  # Control Strategy Limit column
+        for i, row in enumerate(calculation_data.itertuples(index=False), 1):
+            table.cell(i, 0).text = getattr(row, "Element", "")
+            table.cell(i, 1).text = getattr(row, "Class", "")
+            table.cell(i, 2).text = str(getattr(row, f"PDE_{form_data['route_of_administration']}", ""))
+            table.cell(i, 3).text = str(getattr(row, "MPC µg/g", ""))
+            table.cell(i, 4).text = str(getattr(row, f"Control Strategy Limit ({form_data['control_percentage']}%) ng/mL", ""))
     
     # Add some space
     doc.add_paragraph()
@@ -343,14 +406,21 @@ def create_word_document(form_data, calculation_data=None):
     doc.save(doc_io)
     doc_io.seek(0)
     return doc_io
-
 # Function to create HTML report
 def create_pdf_report(product_name, batch_number, elements_data, daily_dose, route, control_percentage=30):
     """
     Create an HTML report template for elemental impurities analysis
     """
-    selected_elements = list(elements_data['Element'])
-    control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g'
+    # Check if we have the new format with measured values
+    has_measured_values = 'Measured Value (µg/g)' in elements_data.columns if not elements_data.empty else False
+    
+    # Determine which columns to use based on data format
+    if has_measured_values:
+        selected_elements = list(elements_data['Element'])
+        control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g' if f'Control Strategy Limit ({control_percentage}%) µg/g' in elements_data.columns else 'Control Limit (µg/g)'
+    else:
+        selected_elements = list(elements_data['Element'])
+        control_limit_col = f'Control Strategy Limit ({control_percentage}%) µg/g'
     
     html_content = f"""
     <!DOCTYPE html>
@@ -405,6 +475,13 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
             .info-text {{
                 margin: 10px 0;
             }}
+            .compliant {{
+                color: green;
+            }}
+            .non-compliant {{
+                color: red;
+                font-weight: bold;
+            }}
             @media print {{
                 body {{
                     margin: 20px;
@@ -451,6 +528,51 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
         
         <div class="section">
             <div class="section-title">4. RESULTS</div>
+    """
+    
+    # Create results table based on data format
+    if has_measured_values:
+        html_content += f"""
+            <table>
+                <tr>
+                    <th>Element</th>
+                    <th>Measured Value (µg/g)</th>
+                    <th>Exposure (µg/day)</th>
+                    <th>Control Threshold (µg/day)</th>
+                    <th>Status</th>
+                </tr>
+        """
+        
+        # Add element rows with measured values
+        for _, row in elements_data.iterrows():
+            element = row['Element']
+            measured = row['Measured Value (µg/g)']
+            exposure = row['Exposure (µg/day)']
+            
+            # Get control threshold and status
+            if 'Status' in row:
+                status = row['Status']
+                status_class = "compliant" if "Compliant" in status else "non-compliant"
+            else:
+                status = "Compliant" if row.get('is_compliant', True) else "Non-Compliant"
+                status_class = "compliant" if row.get('is_compliant', True) else "non-compliant"
+            
+            # Get control threshold
+            control_threshold = row.get('Control Threshold (µg/day)', 
+                                       row.get(f'PDE ({route}) µg/day', 0) * (control_percentage/100))
+            
+            html_content += f"""
+                <tr>
+                    <td>{element}</td>
+                    <td>{measured}</td>
+                    <td>{exposure}</td>
+                    <td>{control_threshold}</td>
+                    <td class="{status_class}">{status}</td>
+                </tr>
+            """
+    else:
+        # Original format without measured values
+        html_content += f"""
             <table>
                 <tr>
                     <th colspan="2">{product_name}</th>
@@ -459,19 +581,19 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
                     <th>Element</th>
                     <th>Batch {batch_number}</th>
                 </tr>
-    """
-    
-    # Add element rows
-    for element in selected_elements:
-        element_data = elements_data[elements_data['Element'] == element]
-        if not element_data.empty:
-            control_limit = element_data.iloc[0][control_limit_col]
-            html_content += f"""
-                <tr>
-                    <td>{element}</td>
-                    <td>&lt; {control_limit}</td>
-                </tr>
-            """
+        """
+        
+        # Add element rows
+        for element in selected_elements:
+            element_data = elements_data[elements_data['Element'] == element]
+            if not element_data.empty:
+                control_limit = element_data.iloc[0][control_limit_col]
+                html_content += f"""
+                    <tr>
+                        <td>{element}</td>
+                        <td>&lt; {control_limit}</td>
+                    </tr>
+                """
     
     html_content += f"""
             </table>
@@ -482,8 +604,29 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
         
         <div class="section">
             <div class="section-title">5. CONCLUSION</div>
+    """
+    
+    # Add conclusion based on data format
+    if has_measured_values:
+        all_compliant = all(row.get('is_compliant', True) for _, row in elements_data.iterrows())
+        if all_compliant:
+            html_content += f"""
+            <p>The batch {batch_number} of {product_name} <span class="compliant">complies</span> with ICH Q3D requirements for a {route} route administration.</p>
+            <p>For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are below the control threshold ({control_percentage}% of PDE).</p>
+            """
+        else:
+            non_compliant_elements = [row['Element'] for _, row in elements_data.iterrows() if not row.get('is_compliant', True)]
+            html_content += f"""
+            <p>The batch {batch_number} of {product_name} <span class="non-compliant">does not comply</span> with ICH Q3D requirements for a {route} route administration.</p>
+            <p>The following elements exceed their control thresholds: {', '.join(non_compliant_elements)}</p>
+            """
+    else:
+        html_content += f"""
             <p>The batch {batch_number} of {product_name} complies with ICH Q3D requirements for a {route} route administration.</p>
             <p>For the {len(selected_elements)} tested elements {', '.join(selected_elements)} the elemental impurity contents are less than the reporting limits so below the control threshold ({control_percentage}% of PDE).</p>
+        """
+    
+    html_content += f"""
         </div>
         
         <div class="section">
@@ -502,12 +645,15 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     
     # Add PDE table rows
     for _, row in elements_data.iterrows():
+        pde_col = f'PDE ({route}) µg/day'
+        mpc_col = 'MPC µg/g'
+        
         html_content += f"""
                 <tr>
                     <td>{row['Element']}</td>
                     <td>{row['Class']}</td>
-                    <td>{row[f'PDE ({route}) µg/day']}</td>
-                    <td>{row['MPC µg/g']}</td>
+                    <td>{row[pde_col]}</td>
+                    <td>{row[mpc_col]}</td>
                     <td>{row[control_limit_col]}</td>
                     <td>{row[control_limit_col]}</td>
                 </tr>
@@ -529,7 +675,6 @@ def create_pdf_report(product_name, batch_number, elements_data, daily_dose, rou
     buffer.write(html_content.encode('utf-8'))
     buffer.seek(0)
     return buffer
-
 # Request Form Tab
 with tab1:
     st.title("Inorganic Analysis Request Form")
@@ -607,8 +752,7 @@ with tab1:
                             key=f"element_{element}"
                         )
         
-        # Separate ICHQ3D Analysis section
-                # Separate ICHQ3D Analysis section with some space
+        # Separate ICHQ3D Analysis section with some space
         st.markdown("---")
         st.subheader("ICHQ3D Analysis")
         ichq3d_analysis = st.checkbox("Request ICHQ3D Analysis")
@@ -712,8 +856,8 @@ with tab1:
             
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
-
-# Calculations Tab
+            
+# Calculations Tab - MODIFIED VERSION
 with tab2:
     st.title("Elemental Impurities Calculations")
     
@@ -722,6 +866,7 @@ with tab2:
     col1, col2 = st.columns(2)
     with col1:
         calc_product_name = st.text_input("Product Name", key="calc_product_name")
+        calc_batch_number = st.text_input("Batch Number", key="calc_batch_number")
         calc_daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=1.0, key="calc_daily_dose")
     
     with col2:
@@ -731,45 +876,98 @@ with tab2:
         calc_control_percentage = st.slider("Control Strategy Limit (%)", min_value=10, max_value=50, value=30, key="calc_control_percentage")
     
     # Element selection for calculations
-    st.subheader("Elements to Include")
+    st.subheader("Elements to Include and Lab Results")
+    st.write("Select elements and enter measured values from laboratory analysis (µg/g)")
     
     # Create tabs for different element classes
     class_tabs = st.tabs(["Class 1", "Class 2A", "Class 2B", "Class 3", "Class 4"])
     
     calc_elements_selected = {}
+    measured_values = {}
     
     # Class 1 tab
     with class_tabs[0]:
         st.write("Class 1 elements (always required for parenteral products)")
         class_1_elements = {k: v for k, v in elements_table.items() if v["Class"] == "1"}
         for element, properties in class_1_elements.items():
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=True,
-                key=f"calc_element_{element}"
-            )
+            pde_value = properties.get(f'PDE_{calc_route}')
+            if pde_value is not None:
+                col1, col2, col3 = st.columns([2, 2, 2])
+                with col1:
+                    calc_elements_selected[element] = st.checkbox(
+                        f"{element}",
+                        value=True,
+                        key=f"calc_element_{element}"
+                    )
+                with col2:
+                    st.write(f"PDE: {pde_value} µg/day")
+                with col3:
+                    if calc_elements_selected.get(element, False):
+                        measured_values[element] = st.number_input(
+                            f"Measured (µg/g)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=0.0001,
+                            format="%.4f",
+                            key=f"measured_{element}",
+                            label_visibility="collapsed"
+                        )
     
     # Class 2A tab
     with class_tabs[1]:
         st.write("Class 2A elements (always required for parenteral products)")
         class_2a_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2A"}
         for element, properties in class_2a_elements.items():
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=True,
-                key=f"calc_element_{element}"
-            )
+            pde_value = properties.get(f'PDE_{calc_route}')
+            if pde_value is not None:
+                col1, col2, col3 = st.columns([2, 2, 2])
+                with col1:
+                    calc_elements_selected[element] = st.checkbox(
+                        f"{element}",
+                        value=True,
+                        key=f"calc_element_{element}"
+                    )
+                with col2:
+                    st.write(f"PDE: {pde_value} µg/day")
+                with col3:
+                    if calc_elements_selected.get(element, False):
+                        measured_values[element] = st.number_input(
+                            f"Measured (µg/g)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=0.0001,
+                            format="%.4f",
+                            key=f"measured_{element}",
+                            label_visibility="collapsed"
+                        )
     
     # Class 2B tab
     with class_tabs[2]:
         st.write("Class 2B elements (required if intentionally added)")
         class_2b_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2B"}
         for element, properties in class_2b_elements.items():
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=False,
-                key=f"calc_element_{element}"
-            )
+            pde_value = properties.get(f'PDE_{calc_route}')
+            if pde_value is not None:
+                col1, col2, col3 = st.columns([2, 2, 2])
+                with col1:
+                    calc_elements_selected[element] = st.checkbox(
+                        f"{element}",
+                        value=False,
+                        key=f"calc_element_{element}"
+                    )
+                with col2:
+                    st.write(f"PDE: {pde_value} µg/day")
+                with col3:
+                    if calc_elements_selected.get(element, False):
+                        measured_values[element] = st.number_input(
+                            f"Measured (µg/g)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=0.0001,
+                            format="%.4f",
+                            key=f"measured_{element}",
+                            label_visibility="collapsed"
+                        )
     
     # Class 3 tab
     with class_tabs[3]:
@@ -779,12 +977,27 @@ with tab2:
             # Pre-select elements that are required for parenteral route
             default_value = properties.get("If not intentionally added", False) if calc_route == "parenteral" else False
             pde_value = properties.get(f'PDE_{calc_route}')
-            pde_text = f" - PDE {pde_value} µg/day" if pde_value is not None else " - No PDE for this route"
-            calc_elements_selected[element] = st.checkbox(
-                f"{element}{pde_text}",
-                value=default_value,
-                key=f"calc_element_{element}"
-            )
+            if pde_value is not None:
+                col1, col2, col3 = st.columns([2, 2, 2])
+                with col1:
+                    calc_elements_selected[element] = st.checkbox(
+                        f"{element}",
+                        value=default_value,
+                        key=f"calc_element_{element}"
+                    )
+                with col2:
+                    st.write(f"PDE: {pde_value} µg/day")
+                with col3:
+                    if calc_elements_selected.get(element, False):
+                        measured_values[element] = st.number_input(
+                            f"Measured (µg/g)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=0.0001,
+                            format="%.4f",
+                            key=f"measured_{element}",
+                            label_visibility="collapsed"
+                        )
     
     # Class 4 tab
     with class_tabs[4]:
@@ -792,76 +1005,175 @@ with tab2:
         class_4_elements = {k: v for k, v in elements_table.items() if v["Class"] == "4"}
         for element, properties in class_4_elements.items():
             pde_value = properties.get(f'PDE_{calc_route}')
-            pde_text = f" - PDE {pde_value} µg/day" if pde_value is not None else " - No PDE for this route"
-            calc_elements_selected[element] = st.checkbox(
-                f"{element}{pde_text}",
-                value=False,
-                key=f"calc_element_{element}"
-            )
+            if pde_value is not None:
+                col1, col2, col3 = st.columns([2, 2, 2])
+                with col1:
+                    calc_elements_selected[element] = st.checkbox(
+                        f"{element}",
+                        value=False,
+                        key=f"calc_element_{element}"
+                    )
+                with col2:
+                    st.write(f"PDE: {pde_value} µg/day")
+                with col3:
+                    if calc_elements_selected.get(element, False):
+                        measured_values[element] = st.number_input(
+                            f"Measured (µg/g)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=0.0001,
+                            format="%.4f",
+                            key=f"measured_{element}",
+                            label_visibility="collapsed"
+                        )
     
     # Calculate button
-    if st.button("Calculate Limits"):
+    st.markdown("---")
+    if st.button("Calculate Results", type="primary"):
         # Filter elements that are selected
-        selected_elements = {k: v for k, v in elements_table.items() if calc_elements_selected.get(k, False)}
+        selected_elements_for_calc = {k: v for k, v in elements_table.items() if calc_elements_selected.get(k, False)}
         
-        if not selected_elements:
+        if not selected_elements_for_calc:
             st.warning("Please select at least one element.")
         else:
-            # Calculate limits
-            calculation_results = calculate_limits(
-                selected_elements, 
-                calc_daily_dose, 
-                calc_route, 
-                calc_control_percentage
-            )
+            # Calculate results with measured values
+            results_data = []
             
-            # Store in session state
-            st.session_state.calculated_data = calculation_results
-            
-            # Display results
-            st.subheader("Calculation Results")
-            st.dataframe(calculation_results, use_container_width=True)
-            
-            # Export options
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Export to Excel
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    calculation_results.to_excel(writer, index=False, sheet_name='Calculations')
-                excel_buffer.seek(0)
+            for element in selected_elements_for_calc.keys():
+                properties = elements_table[element]
+                pde = properties[f'PDE_{calc_route}']
                 
-                st.download_button(
-                    label="📊 Export to Excel",
-                    data=excel_buffer,
-                    file_name=f"EI_Calculations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
-            with col2:
-                # Generate HTML report template
-                if calc_product_name:
-                    report_buffer = create_pdf_report(
-                        calc_product_name, 
-                        "Enter batch number", 
-                        calculation_results, 
-                        calc_daily_dose, 
-                        calc_route,
-                        control_percentage=calc_control_percentage
+                if pde is not None:
+                    measured_value = measured_values.get(element, 0.0)
+                    
+                    # Calculate results
+                    result = calculate_element_results(
+                        measured_value,
+                        calc_daily_dose,
+                        pde,
+                        calc_control_percentage
                     )
                     
-                    html_filename = f"EI_Report_Template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-                    st.download_button(
-                        label="📄 Generate Report Template (HTML)",
-                        data=report_buffer,
-                        file_name=html_filename,
-                        mime="text/html"
-                    )
-                    st.info("💡 Tip: Open the HTML file in your browser and use 'Print to PDF' (Ctrl+P) to create a PDF version.")
+                    if result:
+                        results_data.append({
+                            'Element': element,
+                            'Class': properties['Class'],
+                            f'PDE ({calc_route}) µg/day': pde,
+                            'MPC (µg/g)': result['mpc'],
+                            f'Control Limit ({calc_control_percentage}%) (µg/g)': result['control_limit'],
+                            'Measured Value (µg/g)': result['measured_value'],
+                            'Exposure (µg/day)': result['exposure'],
+                            f'Control Threshold (µg/day)': result['control_threshold'],
+                            'is_compliant': result['is_compliant'],
+                            'Status': '✅ Compliant' if result['is_compliant'] else '❌ Non-Compliant'
+                        })
+            
+            if results_data:
+                results_df = pd.DataFrame(results_data)
+                
+                # Store in session state
+                st.session_state.calculated_data = results_df
+                
+                # Display results
+                st.subheader("Analysis Results")
+                
+                # Summary statistics
+                total_elements = len(results_df)
+                compliant_elements = sum(results_df['is_compliant'])
+                non_compliant_elements = total_elements - compliant_elements
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Elements Tested", total_elements)
+                with col2:
+                    st.metric("Compliant", compliant_elements, delta="✅")
+                with col3:
+                    st.metric("Non-Compliant", non_compliant_elements, delta="❌" if non_compliant_elements > 0 else None)
+                
+                # Display table without the is_compliant column
+                display_df = results_df.drop(columns=['is_compliant'])
+                
+                # Style the dataframe
+                def highlight_status(row):
+                    if row['Status'] == '✅ Compliant':
+                        return ['background-color: #90EE90'] * len(row)
+                    elif row['Status'] == '❌ Non-Compliant':
+                        return ['background-color: #FFB6C1'] * len(row)
+                    return [''] * len(row)
+                
+                styled_df = display_df.style.apply(highlight_status, axis=1)
+                
+                st.dataframe(styled_df, use_container_width=True)
+                
+                # Detailed compliance information
+                if non_compliant_elements > 0:
+                    st.warning("⚠️ Warning: Some elements exceed their control thresholds!")
+                    non_compliant_df = results_df[~results_df['is_compliant']]
+                    st.write("**Non-compliant elements:**")
+                    for _, row in non_compliant_df.iterrows():
+                        st.write(f"- **{row['Element']}**: Exposure {row['Exposure (µg/day)']} µg/day exceeds control threshold {row['Control Threshold (µg/day)']} µg/day")
                 else:
-                    st.warning("Please enter a product name to generate the report template.")
-
+                    st.success("✅ All tested elements are compliant with ICH Q3D requirements!")
+                
+                # Export options
+                st.markdown("---")
+                st.subheader("Export Options")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Export to Excel
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        display_df.to_excel(writer, index=False, sheet_name='Results')
+                    excel_buffer.seek(0)
+                    
+                    st.download_button(
+                        label="📊 Export to Excel",
+                        data=excel_buffer,
+                        file_name=f"EI_Analysis_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                
+                with col2:
+                    # Export to CSV
+                    csv_buffer = io.StringIO()
+                    display_df.to_csv(csv_buffer, index=False)
+                    csv_buffer.seek(0)
+                    
+                    st.download_button(
+                        label="📄 Export to CSV",
+                        data=csv_buffer.getvalue(),
+                        file_name=f"EI_Analysis_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                
+                with col3:
+                    # Generate HTML report
+                    if calc_product_name and calc_batch_number:
+                        report_buffer = create_pdf_report(
+                            calc_product_name,
+                            calc_batch_number,
+                            results_df,
+                            calc_daily_dose,
+                            calc_route,
+                            calc_control_percentage
+                        )
+                        
+                        html_filename = f"EI_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                        st.download_button(
+                            label="📋 Generate Report (HTML)",
+                            data=report_buffer,
+                            file_name=html_filename,
+                            mime="text/html"
+                        )
+                    else:
+                        st.warning("Please enter Product Name and Batch Number to generate the report.")
+                
+                if calc_product_name and calc_batch_number:
+                    st.info("💡 Tip: Open the HTML file in your browser and use 'Print to PDF' (Ctrl+P) to create a PDF version.")
+            else:
+                st.warning("No valid calculations could be performed. Please check your inputs.")
 # Request Status Tab
 with tab3:
     st.title("Request Status")
