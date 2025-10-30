@@ -433,6 +433,8 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     
     # Define fills
     header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    compliant_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+    non_compliant_fill = PatternFill(start_color="FFB6C1", end_color="FFB6C1", fill_type="solid")
     
     # Define borders
     thin_border = Border(
@@ -445,6 +447,31 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     # Define alignment
     center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
     left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    
+    # Check compliance for all batches and elements
+    compliance_status = {}
+    all_compliant = True
+    
+    for batch_name, batch_data in batch_results.items():
+        compliance_status[batch_name] = {}
+        for element in selected_elements:
+            measured = batch_data.get(element, 0)
+            element_data = mpc_data[mpc_data['Element'] == element]
+            
+            if not element_data.empty:
+                control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
+                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
+                
+                # Calculate exposure
+                exposure = measured * daily_dose
+                control_threshold = pde * (control_percentage / 100)
+                
+                # Check compliance
+                is_compliant = (measured == 0) or (exposure <= control_threshold)
+                compliance_status[batch_name][element] = is_compliant
+                
+                if not is_compliant:
+                    all_compliant = False
     
     # Add title
     ws['A1'] = f"Table 8: Summary of (i) The Maximum Permitted Concentration (µg/g) (Section1), (ii) The analytical results (Section2), and (iii) The Control strategy decisions (Section3), regarding the Elemental Impurities examined in the current risk assessment study"
@@ -566,11 +593,11 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
         ws.cell(row=row, column=2).font = normal_font
         ws.cell(row=row, column=2).alignment = center_align
         ws.cell(row=row, column=2).border = thin_border
-        ws.cell(row=row, column=2).border = thin_border
         
         # Add measured values for each element
         for col, element in enumerate(selected_elements, 3):
             measured = batch_results[batch_name].get(element, 0)
+            is_compliant = compliance_status[batch_name][element]
             
             # Format with "< " prefix if it's a detection limit
             if measured == 0:
@@ -588,6 +615,10 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
             ws.cell(row=row, column=col).font = normal_font
             ws.cell(row=row, column=col).alignment = center_align
             ws.cell(row=row, column=col).border = thin_border
+            
+            # Apply color coding based on compliance
+            if not is_compliant:
+                ws.cell(row=row, column=col).fill = non_compliant_fill
     
     # Add compliance row
     row += 2
@@ -608,7 +639,7 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
         ws.cell(row=row, column=col).border = thin_border
     
     row += 1
-    ws.cell(row=row, column=1).value = "Yes"
+    ws.cell(row=row, column=1).value = "Yes" if all_compliant else "No"
     ws.cell(row=row, column=1).font = normal_font
     ws.cell(row=row, column=1).alignment = center_align
     ws.cell(row=row, column=1).border = thin_border
@@ -618,11 +649,19 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     ws.cell(row=row, column=2).alignment = center_align
     ws.cell(row=row, column=2).border = thin_border
     
+    # Check compliance for each element across all batches
     for col, element in enumerate(selected_elements, 3):
-        ws.cell(row=row, column=col).value = "Yes"  # Assuming all elements meet ICH Q3D
+        element_compliant = all(compliance_status[batch][element] for batch in batch_names)
+        ws.cell(row=row, column=col).value = "Yes" if element_compliant else "No"
         ws.cell(row=row, column=col).font = normal_font
         ws.cell(row=row, column=col).alignment = center_align
         ws.cell(row=row, column=col).border = thin_border
+        
+        # Apply color coding
+        if element_compliant:
+            ws.cell(row=row, column=col).fill = compliant_fill
+        else:
+            ws.cell(row=row, column=col).fill = non_compliant_fill
     
     # Add Section 3 title
     row += 2
@@ -657,6 +696,7 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
         # Add measured values for each element (same as Section 2)
         for col, element in enumerate(selected_elements, 3):
             measured = batch_results[batch_name].get(element, 0)
+            is_compliant = compliance_status[batch_name][element]
             
             # Format with "< " prefix if it's a detection limit
             if measured == 0:
@@ -674,6 +714,10 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
             ws.cell(row=row, column=col).font = normal_font
             ws.cell(row=row, column=col).alignment = center_align
             ws.cell(row=row, column=col).border = thin_border
+            
+            # Apply color coding based on compliance
+            if not is_compliant:
+                ws.cell(row=row, column=col).fill = non_compliant_fill
     
     # Add conclusion
     row += 2
@@ -682,10 +726,18 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     ws.cell(row=row, column=1).alignment = left_align
     
     row += 1
-    ws.cell(row=row, column=1).value = "No further action required – Existing controls to be considered as adequate"
+    if all_compliant:
+        conclusion_text = "No further action required – Existing controls to be considered as adequate"
+    else:
+        conclusion_text = "ACTION REQUIRED – Some elements exceed the control threshold. Further investigation and corrective actions needed."
+    
+    ws.cell(row=row, column=1).value = conclusion_text
     ws.merge_cells(f'A{row}:L{row}')
     ws.cell(row=row, column=1).font = normal_font
     ws.cell(row=row, column=1).alignment = left_align
+    
+    if not all_compliant:
+        ws.cell(row=row, column=1).fill = non_compliant_fill
     
     # Add footnote
     row += 2
