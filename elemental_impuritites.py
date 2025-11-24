@@ -9,6 +9,9 @@ import numpy as np
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from io import StringIO
+import tempfile
+import os
 
 # Set page config
 st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
@@ -128,7 +131,7 @@ def calculate_limits(elements, daily_dose, route="parenteral", control_percentag
     
     return pd.DataFrame(results)
 
-# NEW FUNCTION: Calculate element results based on measured values
+# Calculate element results based on measured values
 def calculate_element_results(measured_value, daily_dose, pde, control_percentage=30):
     """
     Calculate element results based on measured values and parameters
@@ -404,7 +407,7 @@ def create_word_document(form_data, calculation_data=None):
     doc_io.seek(0)
     return doc_io
 
-# NEW FUNCTION: Create Excel report with three tables matching the format in the image
+# Create Excel report with three tables
 def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_data, batch_results, control_percentage=30):
     """
     Create an Excel report with three tables matching the format in the image
@@ -761,6 +764,214 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     excel_buffer.seek(0)
     return excel_buffer
 
+# BATCH UPLOAD FUNCTIONS
+
+def parse_batch_upload_file(uploaded_file, selected_elements):
+    """
+    Parse uploaded CSV or Excel file containing batch results
+    
+    Parameters:
+    uploaded_file: The file uploaded by the user
+    selected_elements: List of elements that are currently selected in the UI
+    
+    Returns:
+    DataFrame with parsed data or None if parsing failed
+    """
+    try:
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        
+        if file_extension == 'csv':
+            df = pd.read_csv(uploaded_file)
+        elif file_extension in ['xlsx', 'xls']:
+            df = pd.read_excel(uploaded_file)
+        else:
+            return None, "Unsupported file format. Please upload CSV or Excel files only."
+        
+        # Basic validation
+        # Check if 'Batch' column exists
+        if 'Batch' not in df.columns:
+            return None, "Missing required 'Batch' column in the file."
+        
+        # Check if at least one element column exists
+        element_columns = [col for col in df.columns if col in selected_elements]
+        if not element_columns:
+            return None, f"No matching element columns found. Your file should include columns for some of these elements: {', '.join(selected_elements)}."
+        
+        # Check for numeric data in element columns
+        for col in element_columns:
+            if not pd.api.types.is_numeric_dtype(df[col].dropna()):
+                return None, f"Column '{col}' contains non-numeric values."
+        
+        return df, None
+        
+    except Exception as e:
+        return None, f"Error parsing file: {str(e)}"
+
+def process_batch_data(df, selected_elements):
+    """
+    Process parsed batch data and add to session state
+    
+    Parameters:
+    df: DataFrame with parsed batch data
+    selected_elements: List of elements that are currently selected in the UI
+    
+    Returns:
+    Dictionary with batch processing results
+    """
+    results = {
+        "added": 0,
+        "skipped": 0,
+        "errors": [],
+        "processed_batches": []
+    }
+    
+    try:
+        # Process each row as a batch
+        for _, row in df.iterrows():
+            batch_name = str(row['Batch'])
+            
+            # Skip if batch name is missing
+            if not batch_name or pd.isna(batch_name) or batch_name == 'nan':
+                results["skipped"] += 1
+                results["errors"].append(f"Skipped row with missing batch name")
+                continue
+                
+            # Create a batch result dictionary
+            batch_results = {}
+            
+            # For each selected element, get the value if available
+            for element in selected_elements:
+                if element in row:
+                    # Use 0.0 for NaN/missing values
+                    value = 0.0 if pd.isna(row[element]) else float(row[element])
+                    batch_results[element] = value
+                else:
+                    # Default to 0.0 for elements not in the upload
+                    batch_results[element] = 0.0
+            
+            # Add to session state
+            st.session_state.batch_results[batch_name] = batch_results
+            results["added"] += 1
+            results["processed_batches"].append(batch_name)
+        
+        return results
+        
+    except Exception as e:
+        results["errors"].append(f"Error processing batch data: {str(e)}")
+        return results
+
+def generate_template_file(selected_elements, file_type="csv"):
+    """
+    Generate a template file for batch uploads
+    
+    Parameters:
+    selected_elements: List of elements to include in the template
+    file_type: Type of file to generate (csv or excel)
+    
+    Returns:
+    BytesIO object with the template file
+    """
+    # Create a DataFrame with the required columns
+    columns = ["Batch"] + selected_elements
+    df = pd.DataFrame(columns=columns)
+    
+    # Add sample rows
+    sample_data = [
+        {"Batch": "SAMPLE_BATCH_001", **{element: 0.0 for element in selected_elements}},
+        {"Batch": "SAMPLE_BATCH_002", **{element: 0.0 for element in selected_elements}},
+        {"Batch": "SAMPLE_BATCH_003", **{element: 0.0 for element in selected_elements}}
+    ]
+    
+    df = pd.concat([df, pd.DataFrame(sample_data)], ignore_index=True)
+    
+    # Create the file in memory
+    if file_type == "csv":
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+        return buffer.getvalue(), "text/csv"
+    else:
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Batch Results')
+        buffer.seek(0)
+        return buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def preview_uploaded_data(df, max_rows=5):
+    """
+    Generate a preview of the uploaded data
+    
+    Parameters:
+    df: DataFrame with parsed batch data
+    max_rows: Maximum number of rows to display
+    
+    Returns:
+    None (displays directly in Streamlit)
+    """
+    st.subheader("File Preview")
+    preview_df = df.head(max_rows)
+    st.dataframe(preview_df)
+    
+    st.info(f"The file contains {len(df)} batches. Preview showing {min(max_rows, len(df))} rows.")
+
+def validate_batch_data(df, selected_elements):
+    """Validate batch data before processing"""
+    validation_errors = []
+    warnings = []
+    
+    # Check for duplicate batch names
+    if df['Batch'].duplicated().any():
+        duplicates = df[df['Batch'].duplicated()]['Batch'].tolist()
+        validation_errors.append(f"Duplicate batch names found: {', '.join(map(str, duplicates))}")
+    
+    # Check for outliers in element values
+    for element in [e for e in df.columns if e in selected_elements]:
+        # Skip if all values are missing
+        if df[element].isna().all():
+            continue
+            
+        # Check for extreme values (example: >1000)
+        extreme_values = df[df[element] > 1000]
+        if not extreme_values.empty:
+            batch_names = extreme_values['Batch'].tolist()
+            warnings.append(f"Extreme values (>1000) for {element} in batches: {', '.join(map(str, batch_names))}")
+    
+    # Check for negative values
+    for element in [e for e in df.columns if e in selected_elements]:
+        if df[element].notna().any():
+            negative_values = df[df[element] < 0]
+            if not negative_values.empty:
+                validation_errors.append(f"Negative values found for {element}")
+    
+    return validation_errors, warnings
+
+def excel_sheet_selection(uploaded_file):
+    """Handle Excel files with multiple sheets"""
+    if uploaded_file.name.endswith(('.xlsx', '.xls')):
+        try:
+            # Read Excel info without loading data
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                tmp.write(uploaded_file.getvalue())
+                tmp_name = tmp.name
+            
+            xls = pd.ExcelFile(tmp_name)
+            sheet_names = xls.sheet_names
+            
+            # Clean up
+            os.unlink(tmp_name)
+            
+            # If multiple sheets, let user select
+            if len(sheet_names) > 1:
+                selected_sheet = st.selectbox("Select Excel sheet:", sheet_names)
+                return selected_sheet
+            else:
+                return 0  # Default to first sheet
+        except Exception as e:
+            st.error(f"Error reading Excel file: {str(e)}")
+            return 0
+    
+    return 0  # Default to first sheet
+
 # Request Form Tab
 with tab1:
     st.title("Inorganic Analysis Request Form")
@@ -922,7 +1133,7 @@ with tab1:
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
 
-# Calculations Tab - MODIFIED VERSION
+# Calculations Tab
 with tab2:
     st.title("Elemental Impurities Calculations")
     
@@ -1052,6 +1263,156 @@ with tab2:
     if 'batch_results' not in st.session_state:
         st.session_state.batch_results = {}
     
+    # BATCH UPLOAD SECTION
+    st.markdown("---")
+    st.subheader("📤 Batch Upload")
+    
+    # Get selected elements for template and validation
+    selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
+    
+    if not selected_elements_list:
+        st.warning("⚠️ Please select at least one element before attempting batch upload.")
+    else:
+        col1, col2 = st.columns(2)
+    
+        # Download template buttons
+        with col1:
+            st.write("**Download batch template:**")
+            csv_template, csv_mime = generate_template_file(selected_elements_list, "csv")
+            excel_template, excel_mime = generate_template_file(selected_elements_list, "excel")
+            
+            template_col1, template_col2 = st.columns(2)
+            with template_col1:
+                st.download_button(
+                    label="📄 CSV Template",
+                    data=csv_template,
+                    file_name=f"batch_template_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime=csv_mime
+                )
+            with template_col2:
+                st.download_button(
+                    label="📊 Excel Template",
+                    data=excel_template,
+                    file_name=f"batch_template_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime=excel_mime
+                )
+    
+        # Upload file interface
+        with col2:
+            st.write("**Upload batch results file:**")
+            uploaded_file = st.file_uploader(
+                "Upload CSV or Excel file with batch results",
+                type=["csv", "xlsx", "xls"],
+                help="File must have 'Batch' column and element columns matching the selected elements",
+                key="batch_upload_file"
+            )
+            
+            # Advanced options for CSV files
+            if uploaded_file and uploaded_file.name.endswith('.csv'):
+                st.write("**CSV Options:**")
+                csv_col1, csv_col2 = st.columns(2)
+                with csv_col1:
+                    encoding = st.selectbox("Encoding", ["utf-8", "latin-1", "iso-8859-1"], key="csv_encoding")
+                with csv_col2:
+                    delimiter = st.selectbox("Delimiter", [",", ";", "tab"], 
+                                           format_func=lambda x: "Tab" if x == "tab" else x,
+                                           key="csv_delimiter")
+                    if delimiter == "tab":
+                        delimiter = "\t"
+    
+        # Process uploaded file
+        if uploaded_file is not None:
+            # Handle Excel sheet selection
+            sheet_to_load = 0
+            if uploaded_file.name.endswith(('.xlsx', '.xls')):
+                sheet_to_load = excel_sheet_selection(uploaded_file)
+            
+            # Parse with options
+            df = None
+            error_msg = None
+            
+            try:
+                # Parse based on file type
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file, encoding=encoding, sep=delimiter)
+                else:
+                    df = pd.read_excel(uploaded_file, sheet_name=sheet_to_load)
+                    
+                # Basic validation
+                if 'Batch' not in df.columns:
+                    error_msg = "Missing required 'Batch' column in the file."
+                else:
+                    # Check for element columns
+                    element_columns = [col for col in df.columns if col in selected_elements_list]
+                    if not element_columns:
+                        error_msg = f"No matching element columns found. Your file should include columns for some of these elements: {', '.join(selected_elements_list)}."
+            
+            except Exception as e:
+                error_msg = f"Error reading file: {str(e)}"
+            
+            if error_msg:
+                st.error(error_msg)
+            elif df is not None:
+                # Show preview
+                preview_uploaded_data(df)
+                
+                # Additional validation
+                validation_errors, warnings = validate_batch_data(df, selected_elements_list)
+                
+                if validation_errors:
+                    st.error("❌ Validation errors found:")
+                    for error in validation_errors:
+                        st.write(f"- {error}")
+                
+                if warnings:
+                    st.warning("⚠️ Warnings:")
+                    for warning in warnings:
+                        st.write(f"- {warning}")
+                
+                # Check for existing batches
+                existing_batches = []
+                for batch in df['Batch']:
+                    if str(batch) in st.session_state.batch_results:
+                        existing_batches.append(str(batch))
+                
+                update_existing = False
+                if existing_batches:
+                    st.warning(f"⚠️ Found {len(existing_batches)} batches that already exist in your data.")
+                    update_existing = st.checkbox("Update existing batches", key="update_existing")
+                
+                # Add processing button - only enabled if no validation errors
+                processing_button = st.button(
+                    "✅ Process Batch File", 
+                    disabled=(len(validation_errors) > 0),
+                    key="process_batch_button"
+                )
+                
+                if processing_button:
+                    with st.spinner("Processing batches..."):
+                        results = process_batch_data(df, selected_elements_list)
+                        
+                        # Show results
+                        if results["added"] > 0:
+                            st.success(f"✅ Successfully added {results['added']} batches!")
+                            
+                            # Display list of added batches
+                            if len(results["processed_batches"]) > 0:
+                                with st.expander("View added batches"):
+                                    for batch in results["processed_batches"]:
+                                        st.write(f"- {batch}")
+                        
+                        if results["skipped"] > 0:
+                            st.warning(f"⚠️ Skipped {results['skipped']} invalid entries.")
+                        
+                        if results["errors"]:
+                            with st.expander("View errors"):
+                                for error in results["errors"]:
+                                    st.write(f"- {error}")
+    
+    # Manual Batch Entry Section (existing code)
+    st.markdown("---")
+    st.subheader("📝 Manual Batch Entry")
+    
     # Add batch form
     with st.form("add_batch_form"):
         col1, col2 = st.columns(2)
@@ -1077,7 +1438,8 @@ with tab2:
                     min_value=0.0,
                     value=0.0,
                     step=0.001,
-                    format="%.4f"
+                    format="%.4f",
+                    key=f"manual_batch_{element}"
                 )
         
         submitted_batch = st.form_submit_button("Add Batch Results")
@@ -1085,24 +1447,25 @@ with tab2:
     if submitted_batch:
         # Store batch results in session state
         st.session_state.batch_results[batch_name] = measured_values
-        st.success(f"Batch {batch_name} ({batch_label}) added successfully!")
+        st.success(f"✅ Batch {batch_name} ({batch_label}) added successfully!")
     
     # Display current batches
     if st.session_state.batch_results:
-        st.write("Current Batches:")
+        st.markdown("---")
+        st.subheader("Current Batches")
         batch_df = pd.DataFrame(st.session_state.batch_results).T
-        st.dataframe(batch_df)
+        st.dataframe(batch_df, use_container_width=True)
         
-        if st.button("Clear All Batches"):
+        if st.button("🗑️ Clear All Batches"):
             st.session_state.batch_results = {}
             st.rerun()
     
     # Generate Report Section
     st.markdown("---")
-    st.subheader("Generate ICH Q3D Report")
+    st.subheader("📊 Generate ICH Q3D Report")
     
     if st.session_state.calculated_data is not None and st.session_state.batch_results:
-        if st.button("Generate ICH Q3D Report", type="primary"):
+        if st.button("📊 Generate ICH Q3D Report", type="primary"):
             # Get selected elements
             selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
             
@@ -1119,13 +1482,13 @@ with tab2:
             
             # Display download button
             st.download_button(
-                label="📊 Download ICH Q3D Report (Excel)",
+                label="📥 Download ICH Q3D Report (Excel)",
                 data=excel_buffer,
                 file_name=f"ICH_Q3D_Report_{calc_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     else:
-        st.info("Please calculate Maximum Permitted Concentrations and add at least one batch result before generating a report.")
+        st.info("ℹ️ Please calculate Maximum Permitted Concentrations and add at least one batch result before generating a report.")
 
 # Request Status Tab
 with tab3:
