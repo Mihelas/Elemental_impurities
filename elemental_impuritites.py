@@ -9,7 +9,6 @@ import numpy as np
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from io import StringIO
 import tempfile
 import os
 
@@ -17,17 +16,15 @@ import os
 st.set_page_config(page_title="Elemental Impurities Analysis System", layout="wide")
 
 # Initialize session state
-if 'submitted_requests' not in st.session_state:
-    st.session_state.submitted_requests = []
 if 'calculated_data' not in st.session_state:
     st.session_state.calculated_data = None
 if 'batch_results' not in st.session_state:
     st.session_state.batch_results = {}
 
-# Create tabs
-tab1, tab2, tab3 = st.tabs(["Request Form", "Calculations", "Request Status"])
+# Create tabs (only 2 tabs now)
+tab1, tab2 = st.tabs(["Request Form", "Calculations"])
 
-# Predefined elements table with PDE values
+# Predefined elements table with PDE values (ICH Q3D R2)
 elements_table = {
     "Cd": {"Class": "1", "If intentionally added": True, "If not intentionally added": True, 
            "PDE_oral": 5, "PDE_parenteral": 2, "PDE_inhalation": 3, "PDE_cutaneous": 20},
@@ -40,7 +37,7 @@ elements_table = {
     "Co": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
            "PDE_oral": 50, "PDE_parenteral": 5, "PDE_inhalation": 3, "PDE_cutaneous": 50},
     "V": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
-           "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
+          "PDE_oral": 100, "PDE_parenteral": 10, "PDE_inhalation": 1, "PDE_cutaneous": 100},
     "Ni": {"Class": "2A", "If intentionally added": True, "If not intentionally added": True,
            "PDE_oral": 200, "PDE_parenteral": 20, "PDE_inhalation": 6, "PDE_cutaneous": 200},
     "Tl": {"Class": "2B", "If intentionally added": True, "If not intentionally added": False,
@@ -85,22 +82,13 @@ elements_table = {
            "PDE_oral": 13000, "PDE_parenteral": 1300, "PDE_inhalation": 130, "PDE_cutaneous": None},
 }
 
-# Function to calculate MPC and control strategy limits
 def calculate_limits(elements, daily_dose, route="parenteral", control_percentage=30):
-    """
-    Calculate Maximum Permitted Concentration (MPC) and control strategy limits
+    """Calculate Maximum Permitted Concentration (MPC) and control strategy limits"""
+    if daily_dose <= 0:
+        st.error("Daily dose must be greater than 0")
+        return pd.DataFrame()
     
-    Parameters:
-    elements (dict): Dictionary of elements with PDE values
-    daily_dose (float): Daily dose in grams
-    route (str): Administration route (oral, parenteral, inhalation, cutaneous)
-    control_percentage (float): Percentage of MPC for control strategy limit
-    
-    Returns:
-    DataFrame with calculated values
-    """
     results = []
-    
     for element, properties in elements.items():
         pde_key = f"PDE_{route}"
         if pde_key in properties and properties[pde_key] is not None:
@@ -128,37 +116,15 @@ def calculate_limits(elements, daily_dose, route="parenteral", control_percentag
                 "MPC ng/mL": mpc_rounded * 1000,
                 f"Control Strategy Limit ({control_percentage}%) ng/mL": control_limit_rounded * 1000
             })
-    
     return pd.DataFrame(results)
 
-# Calculate element results based on measured values
 def calculate_element_results(measured_value, daily_dose, pde, control_percentage=30):
-    """
-    Calculate element results based on measured values and parameters
-    
-    Parameters:
-    measured_value (float): Lab analysis result (µg/g)
-    daily_dose (float): Daily dose in grams
-    pde (float): PDE value for the element
-    control_percentage (float): Control strategy percentage (default 30%)
-    
-    Returns:
-    dict: Dictionary containing calculated values and compliance status
-    """
+    """Calculate element results based on measured values and parameters"""
     try:
-        # Calculate MPC
         mpc = pde / daily_dose
-        
-        # Calculate control strategy limit
         control_limit = mpc * (control_percentage / 100)
-        
-        # Calculate exposure (measured value * daily dose)
         exposure = measured_value * daily_dose
-        
-        # Calculate control threshold (PDE * control percentage)
         control_threshold = pde * (control_percentage / 100)
-        
-        # Determine compliance - compare exposure with control threshold
         is_compliant = exposure <= control_threshold
         
         # Round values appropriately
@@ -186,8 +152,8 @@ def calculate_element_results(measured_value, daily_dose, pde, control_percentag
         st.error(f"Calculation error: {str(e)}")
         return None
 
-# Function to create Word document
 def create_word_document(form_data, calculation_data=None):
+    """Function to create Word document"""
     doc = Document()
     
     # Set margins
@@ -407,23 +373,8 @@ def create_word_document(form_data, calculation_data=None):
     doc_io.seek(0)
     return doc_io
 
-# Create Excel report with three tables
 def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_data, batch_results, control_percentage=30):
-    """
-    Create an Excel report with three tables matching the format in the image
-    
-    Parameters:
-    product_name (str): Name of the product
-    daily_dose (float): Daily dose in grams
-    route (str): Administration route
-    selected_elements (list): List of selected elements
-    mpc_data (DataFrame): DataFrame with MPC calculations
-    batch_results (dict): Dictionary with batch results
-    control_percentage (float): Control strategy percentage
-    
-    Returns:
-    BytesIO: Excel file as BytesIO object
-    """
+    """Create an Excel report with three tables matching the format"""
     # Create a new workbook
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -613,7 +564,7 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
                     formatted_value = "< LOD"
             else:
                 formatted_value = f"{measured:.3f}"
-                
+            
             ws.cell(row=row, column=col).value = formatted_value
             ws.cell(row=row, column=col).font = normal_font
             ws.cell(row=row, column=col).alignment = center_align
@@ -706,13 +657,13 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
                 element_data = mpc_data[mpc_data['Element'] == element]
                 if not element_data.empty:
                     control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
-                    detection_limit = control_limit / 3  # Typical detection limit is 1/3 of control limit
+                    detection_limit = control_limit / 3
                     formatted_value = f"< {detection_limit:.3f}"
                 else:
                     formatted_value = "< LOD"
             else:
                 formatted_value = f"{measured:.3f}"
-                
+            
             ws.cell(row=row, column=col).value = formatted_value
             ws.cell(row=row, column=col).font = normal_font
             ws.cell(row=row, column=col).alignment = center_align
@@ -764,19 +715,8 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     excel_buffer.seek(0)
     return excel_buffer
 
-# BATCH UPLOAD FUNCTIONS
-
 def parse_batch_upload_file(uploaded_file, selected_elements):
-    """
-    Parse uploaded CSV or Excel file containing batch results
-    
-    Parameters:
-    uploaded_file: The file uploaded by the user
-    selected_elements: List of elements that are currently selected in the UI
-    
-    Returns:
-    DataFrame with parsed data or None if parsing failed
-    """
+    """Parse uploaded CSV or Excel file containing batch results"""
     try:
         file_extension = uploaded_file.name.split('.')[-1].lower()
         
@@ -788,16 +728,13 @@ def parse_batch_upload_file(uploaded_file, selected_elements):
             return None, "Unsupported file format. Please upload CSV or Excel files only."
         
         # Basic validation
-        # Check if 'Batch' column exists
         if 'Batch' not in df.columns:
             return None, "Missing required 'Batch' column in the file."
         
-        # Check if at least one element column exists
         element_columns = [col for col in df.columns if col in selected_elements]
         if not element_columns:
             return None, f"No matching element columns found. Your file should include columns for some of these elements: {', '.join(selected_elements)}."
         
-        # Check for numeric data in element columns
         for col in element_columns:
             if not pd.api.types.is_numeric_dtype(df[col].dropna()):
                 return None, f"Column '{col}' contains non-numeric values."
@@ -808,16 +745,7 @@ def parse_batch_upload_file(uploaded_file, selected_elements):
         return None, f"Error parsing file: {str(e)}"
 
 def process_batch_data(df, selected_elements):
-    """
-    Process parsed batch data and add to session state
-    
-    Parameters:
-    df: DataFrame with parsed batch data
-    selected_elements: List of elements that are currently selected in the UI
-    
-    Returns:
-    Dictionary with batch processing results
-    """
+    """Process parsed batch data and add to session state"""
     results = {
         "added": 0,
         "skipped": 0,
@@ -826,30 +754,22 @@ def process_batch_data(df, selected_elements):
     }
     
     try:
-        # Process each row as a batch
         for _, row in df.iterrows():
             batch_name = str(row['Batch'])
             
-            # Skip if batch name is missing
             if not batch_name or pd.isna(batch_name) or batch_name == 'nan':
                 results["skipped"] += 1
                 results["errors"].append(f"Skipped row with missing batch name")
                 continue
-                
-            # Create a batch result dictionary
-            batch_results = {}
             
-            # For each selected element, get the value if available
+            batch_results = {}
             for element in selected_elements:
                 if element in row:
-                    # Use 0.0 for NaN/missing values
                     value = 0.0 if pd.isna(row[element]) else float(row[element])
                     batch_results[element] = value
                 else:
-                    # Default to 0.0 for elements not in the upload
                     batch_results[element] = 0.0
             
-            # Add to session state
             st.session_state.batch_results[batch_name] = batch_results
             results["added"] += 1
             results["processed_batches"].append(batch_name)
@@ -861,21 +781,10 @@ def process_batch_data(df, selected_elements):
         return results
 
 def generate_template_file(selected_elements, file_type="csv"):
-    """
-    Generate a template file for batch uploads
-    
-    Parameters:
-    selected_elements: List of elements to include in the template
-    file_type: Type of file to generate (csv or excel)
-    
-    Returns:
-    BytesIO object with the template file
-    """
-    # Create a DataFrame with the required columns
+    """Generate a template file for batch uploads"""
     columns = ["Batch"] + selected_elements
     df = pd.DataFrame(columns=columns)
     
-    # Add sample rows
     sample_data = [
         {"Batch": "SAMPLE_BATCH_001", **{element: 0.0 for element in selected_elements}},
         {"Batch": "SAMPLE_BATCH_002", **{element: 0.0 for element in selected_elements}},
@@ -884,7 +793,6 @@ def generate_template_file(selected_elements, file_type="csv"):
     
     df = pd.concat([df, pd.DataFrame(sample_data)], ignore_index=True)
     
-    # Create the file in memory
     if file_type == "csv":
         buffer = StringIO()
         df.to_csv(buffer, index=False)
@@ -898,20 +806,10 @@ def generate_template_file(selected_elements, file_type="csv"):
         return buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 def preview_uploaded_data(df, max_rows=5):
-    """
-    Generate a preview of the uploaded data
-    
-    Parameters:
-    df: DataFrame with parsed batch data
-    max_rows: Maximum number of rows to display
-    
-    Returns:
-    None (displays directly in Streamlit)
-    """
+    """Generate a preview of the uploaded data"""
     st.subheader("File Preview")
     preview_df = df.head(max_rows)
     st.dataframe(preview_df)
-    
     st.info(f"The file contains {len(df)} batches. Preview showing {min(max_rows, len(df))} rows.")
 
 def validate_batch_data(df, selected_elements):
@@ -919,67 +817,31 @@ def validate_batch_data(df, selected_elements):
     validation_errors = []
     warnings = []
     
-    # Check for duplicate batch names
     if df['Batch'].duplicated().any():
         duplicates = df[df['Batch'].duplicated()]['Batch'].tolist()
         validation_errors.append(f"Duplicate batch names found: {', '.join(map(str, duplicates))}")
     
-    # Check for outliers in element values
     for element in [e for e in df.columns if e in selected_elements]:
-        # Skip if all values are missing
         if df[element].isna().all():
             continue
-            
-        # Check for extreme values (example: >1000)
         extreme_values = df[df[element] > 1000]
         if not extreme_values.empty:
             batch_names = extreme_values['Batch'].tolist()
             warnings.append(f"Extreme values (>1000) for {element} in batches: {', '.join(map(str, batch_names))}")
-    
-    # Check for negative values
-    for element in [e for e in df.columns if e in selected_elements]:
-        if df[element].notna().any():
-            negative_values = df[df[element] < 0]
-            if not negative_values.empty:
-                validation_errors.append(f"Negative values found for {element}")
+        
+        negative_values = df[df[element] < 0]
+        if not negative_values.empty:
+            validation_errors.append(f"Negative values found for {element}")
     
     return validation_errors, warnings
 
-def excel_sheet_selection(uploaded_file):
-    """Handle Excel files with multiple sheets"""
-    if uploaded_file.name.endswith(('.xlsx', '.xls')):
-        try:
-            # Read Excel info without loading data
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-                tmp.write(uploaded_file.getvalue())
-                tmp_name = tmp.name
-            
-            xls = pd.ExcelFile(tmp_name)
-            sheet_names = xls.sheet_names
-            
-            # Clean up
-            os.unlink(tmp_name)
-            
-            # If multiple sheets, let user select
-            if len(sheet_names) > 1:
-                selected_sheet = st.selectbox("Select Excel sheet:", sheet_names)
-                return selected_sheet
-            else:
-                return 0  # Default to first sheet
-        except Exception as e:
-            st.error(f"Error reading Excel file: {str(e)}")
-            return 0
-    
-    return 0  # Default to first sheet
-
-# Request Form Tab
+# Tab 1: Request Form
 with tab1:
     st.title("Inorganic Analysis Request Form")
     
     with st.form("analysis_request_form"):
         st.subheader("Requestor Information")
         requestor_site = st.selectbox("Requestor Site", ["Frankfurt", "Vitry", "Framingham"])
-        
         col1, col2, col3 = st.columns(3)
         with col1:
             requestor_name = st.text_input("Requestor Name")
@@ -987,561 +849,261 @@ with tab1:
             requestor_phone = st.text_input("Requestor Phone")
         with col3:
             requestor_email = st.text_input("Requestor Email")
-        
         request_date = st.date_input("Request Date", datetime.now())
         
         st.subheader("Sample Information")
         product_name = st.text_input("Product Name")
         actime_code = st.text_input("Actime Code")
         product_form = st.selectbox("Product Form", ["Drug Product", "Drug Substance", "Other"])
-        batch_number = st.text_area("Batch Number(s)")
+        batch_number = st.text_area("Batch Numbers")
         
-        # Completely separated sample quantity and unit inputs
-        st.write("Sample Quantity:")
+        st.write("Sample Quantity")
         col1, col2 = st.columns(2)
         with col1:
             sample_quantity = st.number_input("Value", min_value=0.0, step=0.1)
         with col2:
             sample_unit = st.selectbox("Unit", ["mg", "ml"])
-        
         number_of_vials = st.number_input("Number of Vials", min_value=1, step=1)
         safety_risk = st.text_area("Safety Risk")
         shipment_conditions = st.text_input("Shipment Conditions")
         storage_conditions = st.text_input("Storage Conditions")
         
-        # New fields for ICH Q3D calculations
         st.subheader("ICH Q3D Information")
         col1, col2 = st.columns(2)
         with col1:
             daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=1.0,
-                                        help="Maximum daily dose in grams")
+                                       help="Maximum daily dose in grams")
         with col2:
             route_of_administration = st.selectbox("Route of Administration", 
-                                                ["parenteral", "oral", "inhalation", "cutaneous"],
-                                                help="Route of administration affects PDE values")
+                                                 ["parenteral", "oral", "inhalation", "cutaneous"],
+                                                 help="Route of administration affects PDE values")
         
         st.subheader("Analysis Information")
         gmp_analysis = st.radio("GMP Analysis", ["Yes", "No"])
-        gmp_purpose = st.radio("Purpose", ["For Release", "For Information"]) if gmp_analysis == "Yes" else "N/A"
+        if gmp_analysis == "Yes":
+            gmp_purpose = st.radio("Purpose", ["For Release", "For Information"])
+        else:
+            gmp_purpose = "N/A"
         analysis_type = st.radio("Analysis Type", ["Quantitative Analysis", "Qualitative Analysis (Screening)"])
         
-        # Elements to be determined
         st.subheader("Elements to be determined")
-        st.write("Uncheck elements that are not needed:")
-        
-        # Calculate number of rows needed (5 elements per row)
-        elements_list = list(elements_table.items())
-        num_rows = (len(elements_list) + 4) // 5  # Ceiling division by 5
+        st.write("Uncheck elements that are not needed")
         
         elements_selected = {}
-        # Create grid layout for elements
+        num_rows = (len(elements_table) + 4) // 5
         for row in range(num_rows):
             cols = st.columns(5)
             for col in range(5):
                 idx = row * 5 + col
-                if idx < len(elements_list):
-                    element, properties = elements_list[idx]
+                if idx < len(elements_table):
+                    element, properties = list(elements_table.items())[idx]
                     with cols[col]:
-                        # Pre-select all checkboxes (value=True)
                         elements_selected[element] = st.checkbox(
-                            f"{element} (Class {properties['Class']})",
-                            value=True,  # Pre-select all checkboxes
+                            f"{element} - Class {properties['Class']}", 
+                            value=True, 
                             key=f"element_{element}"
                         )
         
-        # Separate ICHQ3D Analysis section with some space
         st.markdown("---")
         st.subheader("ICHQ3D Analysis")
         ichq3d_analysis = st.checkbox("Request ICHQ3D Analysis")
-        
         if ichq3d_analysis:
-            st.info("""
-            For ICHQ3D request, documents to be provided:
-            * Phase 1 and 2: R&D Medicinal product ID Card (SD-000133)
-            * Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)
-            """)
-        
+            st.info("For ICHQ3D request, documents to be provided:\n"
+                   "Phase 1 and 2: R&D Medicinal product ID Card (SD-000133)\n"
+                   "Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)")
         method_reference = st.text_area("Method reference and/or specification to be applied if relevant")
         
         submitted = st.form_submit_button("Generate Document")
-    
-    if submitted:
-        try:
-            # Create form data dictionary
-            form_data = {
-                "requestor_site": requestor_site,
-                "requestor_name": requestor_name,
-                "requestor_phone": requestor_phone,
-                "requestor_email": requestor_email,
-                "request_date": request_date.strftime("%Y-%m-%d"),
-                "product_name": product_name,
-                "actime_code": actime_code,
-                "product_form": product_form,
-                "batch_number": batch_number,
-                "sample_quantity": sample_quantity,
-                "sample_unit": sample_unit,
-                "number_of_vials": str(number_of_vials),
-                "safety_risk": safety_risk,
-                "shipment_conditions": shipment_conditions,
-                "storage_conditions": storage_conditions,
-                "daily_dose": daily_dose,
-                "route_of_administration": route_of_administration,
-                "gmp_analysis": gmp_analysis,
-                "gmp_purpose": gmp_purpose,
-                "analysis_type": analysis_type,
-                "elements": elements_selected,
-                "ichq3d_analysis": ichq3d_analysis,
-                "method_reference": method_reference,
-            }
-            
-            # Calculate limits if ICHQ3D analysis is requested
-            calculation_data = None
-            if ichq3d_analysis:
-                # Filter elements that are selected
-                selected_elements = {k: v for k, v in elements_table.items() if elements_selected.get(k, False)}
-                calculation_data = calculate_limits(selected_elements, daily_dose, route_of_administration)
-                st.session_state.calculated_data = calculation_data
-            
-            # Generate document
-            doc_io = create_word_document(form_data, calculation_data)
-            
-            # Success message
-            st.success("Document generated successfully!")
-            
-            # Download buttons (outside the form)
-            col1, col2 = st.columns(2)
-            with col1:
-                filename = f"Analysis_Request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        
+        if submitted:
+            try:
+                form_data = {
+                    'requestor_site': requestor_site,
+                    'requestor_name': requestor_name,
+                    'requestor_phone': requestor_phone,
+                    'requestor_email': requestor_email,
+                    'request_date': str(request_date),
+                    'product_name': product_name,
+                    'actime_code': actime_code,
+                    'product_form': product_form,
+                    'batch_number': batch_number,
+                    'sample_quantity': sample_quantity,
+                    'sample_unit': sample_unit,
+                    'number_of_vials': number_of_vials,
+                    'safety_risk': safety_risk,
+                    'shipment_conditions': shipment_conditions,
+                    'storage_conditions': storage_conditions,
+                    'gmp_analysis': gmp_analysis,
+                    'gmp_purpose': gmp_purpose,
+                    'analysis_type': analysis_type,
+                    'elements': elements_selected,
+                    'ichq3d_analysis': ichq3d_analysis,
+                    'method_reference': method_reference,
+                    'daily_dose': daily_dose,
+                    'route_of_administration': route_of_administration
+                }
+                
+                doc_io = create_word_document(form_data)
+                filename = f"AnalysisRequest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                 st.download_button(
-                    label="📄 Download Request Form",
-                    data=doc_io,
+                    label="Download Request Form",
+                    data=doc_io.getvalue(),
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
-            
-            # Store in session state
-            st.session_state.submitted_requests.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "product": product_name,
-                "requestor": requestor_name,
-                "batch": batch_number,
-                "status": "Submitted",
-                "daily_dose": daily_dose,
-                "route": route_of_administration
-            })
-            
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
-# Calculations Tab
+# Tab 2: Calculations
 with tab2:
-    st.title("Elemental Impurities Calculations")
+    st.title("ICH Q3D Calculations")
     
-    st.write("This tab allows you to perform ICH Q3D calculations for elemental impurities.")
-    
-    # Product information
     st.subheader("Product Information")
     col1, col2, col3 = st.columns(3)
     with col1:
-        calc_product_name = st.text_input("Product Name", key="calc_product_name", 
-                                         value="Tusamitamab ravtansine")
+        calc_product_name = st.text_input("Product Name", value="Tusamitamab ravtansine", key="calc_product_name")
     with col2:
         calc_product_form = st.selectbox("Product Form", 
-                                        ["injectable form", "oral form", "inhalation form", "cutaneous form"],
-                                        index=0,
-                                        key="calc_product_form")
+                                       ["injectable form", "oral form", "inhalation form", "cutaneous form"], 
+                                       index=0, key="calc_product_form")
     with col3:
-        calc_daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=36.6, key="calc_daily_dose",
-                                         help="Maximum daily dose in grams")
+        calc_daily_dose = st.number_input("Maximum Daily Dose (g)", min_value=0.1, step=0.1, value=36.6, 
+                                        key="calc_daily_dose", help="Maximum daily dose in grams")
     
     col1, col2 = st.columns(2)
     with col1:
         calc_route = st.selectbox("Route of Administration", 
-                                ["parenteral", "oral", "inhalation", "cutaneous"],
-                                index=0,
-                                key="calc_route")
+                                ["parenteral", "oral", "inhalation", "cutaneous"], 
+                                index=0, key="calc_route")
     with col2:
-        calc_control_percentage = st.slider("Control Strategy Limit (%)", min_value=10, max_value=50, value=30, key="calc_control_percentage")
+        calc_control_percentage = st.slider("Control Strategy Limit (%)", min_value=10, max_value=50, value=30, 
+                                          key="calc_control_percentage")
     
-    # Element selection for calculations
-    st.subheader("Elements to Include")
+    st.subheader("Element Selection for Calculations")
+    default_elements = ["Cd", "Pb", "As", "Hg", "Co", "V", "Ni"]  # Class 1 + 2A
     
-    # Default elements from the image
-    default_elements = ["Cd", "Pb", "As", "Hg", "Co", "V", "Ni", "Li", "Sb", "Cu"]
-    
-    # Create tabs for different element classes
-    class_tabs = st.tabs(["Class 1", "Class 2A", "Class 2B", "Class 3", "Class 4"])
-    
-    calc_elements_selected = {}
-    
-    # Class 1 tab
-    with class_tabs[0]:
-        st.write("Class 1 elements (always required for parenteral products)")
-        class_1_elements = {k: v for k, v in elements_table.items() if v["Class"] == "1"}
-        for element, properties in class_1_elements.items():
-            # Pre-select elements from default list
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=element in default_elements,
-                key=f"calc_element_{element}"
-            )
-    
-    # Class 2A tab
-    with class_tabs[1]:
-        st.write("Class 2A elements (always required for parenteral products)")
-        class_2a_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2A"}
-        for element, properties in class_2a_elements.items():
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=element in default_elements,
-                key=f"calc_element_{element}"
-            )
-    
-    # Class 2B tab
-    with class_tabs[2]:
-        st.write("Class 2B elements (required if intentionally added)")
-        class_2b_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2B"}
-        for element, properties in class_2b_elements.items():
-            calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=element in default_elements,
-                key=f"calc_element_{element}"
-            )
-    
-    # Class 3 tab
-    with class_tabs[3]:
-        st.write("Class 3 elements (some required for parenteral products)")
-        class_3_elements = {k: v for k, v in elements_table.items() if v["Class"] == "3"}
-        for element, properties in class_3_elements.items():
-            # Pre-select elements that are required for parenteral route
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.write("**Class 1 & 2A (Always required for parenteral)**")
+        class1_2a_elements = {k: v for k, v in elements_table.items() if v["Class"] in ["1", "2A"]}
+        calc_elements_selected = {}
+        for element, properties in class1_2a_elements.items():
             default_value = element in default_elements
             calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=default_value,
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day", 
+                value=default_value, 
                 key=f"calc_element_{element}"
             )
     
-    # Class 4 tab
-    with class_tabs[4]:
-        st.write("Class 4 elements")
-        class_4_elements = {k: v for k, v in elements_table.items() if v["Class"] == "4"}
-        for element, properties in class_4_elements.items():
+    with col2:
+        st.write("**Class 2B (If intentionally added)**")
+        class2b_elements = {k: v for k, v in elements_table.items() if v["Class"] == "2B"}
+        for element, properties in class2b_elements.items():
+            default_value = element in default_elements
             calc_elements_selected[element] = st.checkbox(
-                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day",
-                value=element in default_elements,
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day", 
+                value=default_value, 
                 key=f"calc_element_{element}"
             )
     
-    # Calculate button for MPC
-    if st.button("Calculate Maximum Permitted Concentrations"):
-        # Filter elements that are selected
-        selected_elements = {k: v for k, v in elements_table.items() if calc_elements_selected.get(k, False)}
+    uploaded_file = st.file_uploader("Upload Batch Results (CSV/Excel)", type=['csv', 'xlsx', 'xls'])
+    
+    if uploaded_file is not None:
+        selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
         
-        if not selected_elements:
-            st.warning("Please select at least one element.")
-        else:
-            # Calculate limits
-            calculation_results = calculate_limits(
-                selected_elements, 
-                calc_daily_dose, 
-                calc_route, 
-                calc_control_percentage
-            )
+        df, parse_error = parse_batch_upload_file(uploaded_file, selected_elements_list)
+        if df is not None:
+            validation_errors, warnings = validate_batch_data(df, selected_elements_list)
             
-            # Store in session state
-            st.session_state.calculated_data = calculation_results
-            
-            # Display results
-            st.subheader("Maximum Permitted Concentrations")
-            st.dataframe(calculation_results, use_container_width=True)
-    
-    # Batch Results Section
-    st.markdown("---")
-    st.subheader("Batch Analysis Results")
-    
-    # Initialize batch results in session state if not present
-    if 'batch_results' not in st.session_state:
-        st.session_state.batch_results = {}
-    
-    # BATCH UPLOAD SECTION
-    st.markdown("---")
-    st.subheader("📤 Batch Upload")
-    
-    # Get selected elements for template and validation
-    selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
-    
-    if not selected_elements_list:
-        st.warning("⚠️ Please select at least one element before attempting batch upload.")
-    else:
-        col1, col2 = st.columns(2)
-    
-        # Download template buttons
-        with col1:
-            st.write("**Download batch template:**")
-            csv_template, csv_mime = generate_template_file(selected_elements_list, "csv")
-            excel_template, excel_mime = generate_template_file(selected_elements_list, "excel")
-            
-            template_col1, template_col2 = st.columns(2)
-            with template_col1:
-                st.download_button(
-                    label="📄 CSV Template",
-                    data=csv_template,
-                    file_name=f"batch_template_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime=csv_mime
-                )
-            with template_col2:
-                st.download_button(
-                    label="📊 Excel Template",
-                    data=excel_template,
-                    file_name=f"batch_template_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime=excel_mime
-                )
-    
-        # Upload file interface
-        with col2:
-            st.write("**Upload batch results file:**")
-            uploaded_file = st.file_uploader(
-                "Upload CSV or Excel file with batch results",
-                type=["csv", "xlsx", "xls"],
-                help="File must have 'Batch' column and element columns matching the selected elements",
-                key="batch_upload_file"
-            )
-            
-            # Advanced options for CSV files
-            if uploaded_file and uploaded_file.name.endswith('.csv'):
-                st.write("**CSV Options:**")
-                csv_col1, csv_col2 = st.columns(2)
-                with csv_col1:
-                    encoding = st.selectbox("Encoding", ["utf-8", "latin-1", "iso-8859-1"], key="csv_encoding")
-                with csv_col2:
-                    delimiter = st.selectbox("Delimiter", [",", ";", "tab"], 
-                                           format_func=lambda x: "Tab" if x == "tab" else x,
-                                           key="csv_delimiter")
-                    if delimiter == "tab":
-                        delimiter = "\t"
-    
-        # Process uploaded file
-        if uploaded_file is not None:
-            # Handle Excel sheet selection
-            sheet_to_load = 0
-            if uploaded_file.name.endswith(('.xlsx', '.xls')):
-                sheet_to_load = excel_sheet_selection(uploaded_file)
-            
-            # Parse with options
-            df = None
-            error_msg = None
-            
-            try:
-                # Parse based on file type
-                if uploaded_file.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file, encoding=encoding, sep=delimiter)
-                else:
-                    df = pd.read_excel(uploaded_file, sheet_name=sheet_to_load)
-                    
-                # Basic validation
-                if 'Batch' not in df.columns:
-                    error_msg = "Missing required 'Batch' column in the file."
-                else:
-                    # Check for element columns
-                    element_columns = [col for col in df.columns if col in selected_elements_list]
-                    if not element_columns:
-                        error_msg = f"No matching element columns found. Your file should include columns for some of these elements: {', '.join(selected_elements_list)}."
-            
-            except Exception as e:
-                error_msg = f"Error reading file: {str(e)}"
-            
-            if error_msg:
-                st.error(error_msg)
-            elif df is not None:
-                # Show preview
+            if validation_errors:
+                for error in validation_errors:
+                    st.error(error)
+            else:
                 preview_uploaded_data(df)
                 
-                # Additional validation
-                validation_errors, warnings = validate_batch_data(df, selected_elements_list)
-                
-                if validation_errors:
-                    st.error("❌ Validation errors found:")
-                    for error in validation_errors:
-                        st.write(f"- {error}")
-                
                 if warnings:
-                    st.warning("⚠️ Warnings:")
                     for warning in warnings:
-                        st.write(f"- {warning}")
+                        st.warning(warning)
                 
-                # Check for existing batches
-                existing_batches = []
-                for batch in df['Batch']:
-                    if str(batch) in st.session_state.batch_results:
-                        existing_batches.append(str(batch))
-                
-                update_existing = False
-                if existing_batches:
-                    st.warning(f"⚠️ Found {len(existing_batches)} batches that already exist in your data.")
-                    update_existing = st.checkbox("Update existing batches", key="update_existing")
-                
-                # Add processing button - only enabled if no validation errors
-                processing_button = st.button(
-                    "✅ Process Batch File", 
-                    disabled=(len(validation_errors) > 0),
-                    key="process_batch_button"
-                )
+                processing_button = st.button("Process Batch File", disabled=len(validation_errors) > 0, 
+                                           key="process_batch_button")
                 
                 if processing_button:
                     with st.spinner("Processing batches..."):
                         results = process_batch_data(df, selected_elements_list)
                         
-                        # Show results
                         if results["added"] > 0:
-                            st.success(f"✅ Successfully added {results['added']} batches!")
-                            
-                            # Display list of added batches
-                            if len(results["processed_batches"]) > 0:
-                                with st.expander("View added batches"):
-                                    for batch in results["processed_batches"]:
-                                        st.write(f"- {batch}")
+                            st.success(f"Successfully added {results['added']} batches!")
+                            if results["skipped"] > 0:
+                                st.warning(f"Skipped {results['skipped']} invalid entries.")
+                            if results["errors"]:
+                                with st.expander("View errors"):
+                                    for error in results["errors"]:
+                                        st.write(f"- {error}")
                         
-                        if results["skipped"] > 0:
-                            st.warning(f"⚠️ Skipped {results['skipped']} invalid entries.")
-                        
-                        if results["errors"]:
-                            with st.expander("View errors"):
-                                for error in results["errors"]:
-                                    st.write(f"- {error}")
-    
-    # Manual Batch Entry Section (existing code)
-    st.markdown("---")
-    st.subheader("📝 Manual Batch Entry")
-    
-    # Add batch form
-    with st.form("add_batch_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            batch_name = st.text_input("Batch Number", value="C1108289")
-        with col2:
-            batch_label = st.text_input("Batch Label (e.g., PPQ 1)", value="PPQ 1")
+                        if len(results["processed_batches"]) > 0:
+                            with st.expander("View added batches"):
+                                for batch in results["processed_batches"]:
+                                    st.write(f"- {batch}")
         
-        st.write("Enter measured values for each element (µg/g):")
-        
-        # Get selected elements
+        else:
+            st.error(parse_error)
+    
+    # Generate template
+    if st.button("Download Batch Upload Template"):
         selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
-        
-        # Create a grid for measured values
-        measured_values = {}
-        cols = st.columns(3)
-        for i, element in enumerate(selected_elements_list):
-            col_idx = i % 3
-            with cols[col_idx]:
-                # Default to 0 which will be displayed as "< LOD"
-                measured_values[element] = st.number_input(
-                    f"{element} (µg/g)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=0.001,
-                    format="%.4f",
-                    key=f"manual_batch_{element}"
-                )
-        
-        submitted_batch = st.form_submit_button("Add Batch Results")
+        csv_data, csv_mime = generate_template_file(selected_elements_list, "csv")
+        st.download_button(
+            label="Download CSV Template",
+            data=csv_data,
+            file_name="batch_template.csv",
+            mime=csv_mime
+        )
     
-    if submitted_batch:
-        # Store batch results in session state
-        st.session_state.batch_results[batch_name] = measured_values
-        st.success(f"✅ Batch {batch_name} ({batch_label}) added successfully!")
-    
-    # Display current batches
+    # Calculate limits and generate report
     if st.session_state.batch_results:
         st.markdown("---")
         st.subheader("Current Batches")
-        batch_df = pd.DataFrame(st.session_state.batch_results).T
+        batch_df = pd.DataFrame(list(st.session_state.batch_results.items()), 
+                               columns=['Batch', 'Results']).set_index('Batch')
         st.dataframe(batch_df, use_container_width=True)
         
-        if st.button("🗑️ Clear All Batches"):
-            st.session_state.batch_results = {}
-            st.rerun()
-    
-    # Generate Report Section
-    st.markdown("---")
-    st.subheader("📊 Generate ICH Q3D Report")
-    
-    if st.session_state.calculated_data is not None and st.session_state.batch_results:
-        if st.button("📊 Generate ICH Q3D Report", type="primary"):
-            # Get selected elements
-            selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
-            
-            # Create Excel report
-            excel_buffer = create_excel_report(
-                calc_product_name,
-                calc_daily_dose,
-                calc_route,
-                selected_elements_list,
-                st.session_state.calculated_data,
-                st.session_state.batch_results,
+        selected_elements_list = [k for k, v in calc_elements_selected.items() if v]
+        if selected_elements_list:
+            calculation_data = calculate_limits(
+                {k: elements_table[k] for k in selected_elements_list},
+                calc_daily_dose, 
+                calc_route, 
                 calc_control_percentage
             )
+            st.session_state.calculated_data = calculation_data
             
-            # Display download button
+            st.dataframe(calculation_data, use_container_width=True)
+            
+            if st.button("Clear All Batches"):
+                st.session_state.batch_results = {}
+                st.rerun()
+            
+            # Generate Excel report
+            excel_buffer = create_excel_report(
+                calc_product_name, calc_daily_dose, calc_route, selected_elements_list,
+                calculation_data, st.session_state.batch_results, calc_control_percentage
+            )
+            
+            filename = f"ICHQ3DReport_{calc_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             st.download_button(
-                label="📥 Download ICH Q3D Report (Excel)",
-                data=excel_buffer,
-                file_name=f"ICH_Q3D_Report_{calc_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                label="Download ICH Q3D Report (Excel)",
+                data=excel_buffer.getvalue(),
+                file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+        else:
+            st.warning("Please select at least one element for calculations.")
     else:
-        st.info("ℹ️ Please calculate Maximum Permitted Concentrations and add at least one batch result before generating a report.")
-
-# Request Status Tab
-with tab3:
-    st.title("Request Status")
+        st.info("Upload batch results or add manual batches to generate the report.")
     
-    if not st.session_state.submitted_requests:
-        st.info("No requests have been submitted yet.")
-    else:
-        df = pd.DataFrame(st.session_state.submitted_requests)
-        st.dataframe(df, use_container_width=True)
-        
-        # Allow viewing calculation details for a specific request
-        if len(st.session_state.submitted_requests) > 0:
-            st.subheader("View Request Details")
-            selected_request_idx = st.selectbox(
-                "Select a request to view details:",
-                options=range(len(st.session_state.submitted_requests)),
-                format_func=lambda x: f"{st.session_state.submitted_requests[x]['timestamp']} - {st.session_state.submitted_requests[x]['product']}"
-            )
-            
-            if st.button("View Request Details"):
-                request = st.session_state.submitted_requests[selected_request_idx]
-                
-                st.subheader(f"Details for {request['product']}")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Requestor:** {request['requestor']}")
-                    st.write(f"**Batch:** {request['batch']}")
-                with col2:
-                    st.write(f"**Daily Dose:** {request['daily_dose']} g")
-                    st.write(f"**Route:** {request['route']}")
-                    st.write(f"**Status:** {request['status']}")
-        
-        st.markdown("---")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🗑️ Clear All Requests"):
-                st.session_state.submitted_requests = []
-                st.rerun()
-        
-        with col2:
-            if st.button("📥 Export Request History"):
-                if st.session_state.submitted_requests:
-                    history_df = pd.DataFrame(st.session_state.submitted_requests)
-                    csv_buffer = io.StringIO()
-                    history_df.to_csv(csv_buffer, index=False)
-                    csv_buffer.seek(0)
-                    
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv_buffer.getvalue(),
-                        file_name=f"Request_History_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+    if st.button("Clear All Data"):
+        st.session_state.calculated_data = None
+        st.session_state.batch_results = {}
+        st.rerun()
+
