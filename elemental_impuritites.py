@@ -1005,6 +1005,28 @@ with tab2:
                 value=default_value, 
                 key=f"calc_element_{element}"
             )
+
+    with col3:
+        st.write("**Class 3 (If intentionally added)**")
+        class3_elements = {k: v for k, v in elements_table.items() if v["Class"] == "3"}
+        for element, properties in class3_elements.items():
+            default_value = element in default_elements
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day", 
+                value=default_value, 
+                key=f"calc_element_{element}"
+            )
+
+    with col4:
+        st.write("**Class 4 (If intentionally added)**")
+        class4_elements = {k: v for k, v in elements_table.items() if v["Class"] == "4"}
+        for element, properties in class4_elements.items():
+            default_value = element in default_elements
+            calc_elements_selected[element] = st.checkbox(
+                f"{element} - PDE {properties[f'PDE_{calc_route}']} µg/day", 
+                value=default_value, 
+                key=f"calc_element_{element}"
+            )  
     
     uploaded_file = st.file_uploader("Upload Batch Results (CSV/Excel)", type=['csv', 'xlsx', 'xls'])
     
