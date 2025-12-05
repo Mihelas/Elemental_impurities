@@ -373,6 +373,385 @@ def create_word_document(form_data, calculation_data=None):
     doc_io.seek(0)
     return doc_io
 
+def determine_compliance_situation(batch_results, calculation_data, route, daily_dose, control_percentage=30):
+    """Determine compliance situation (1, 2, or 3) based on batch results"""
+    situation = 1  # Default: All elements < 30% PDE
+    
+    for batch_name, batch_data in batch_results.items():
+        for element, measured in batch_data.items():
+            element_data = calculation_data[calculation_data['Element'] == element]
+            
+            if not element_data.empty:
+                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
+                control_threshold = pde * (control_percentage / 100)
+                
+                # Calculate exposure
+                exposure = measured * daily_dose
+                
+                if exposure > pde:
+                    return 3  # Situation 3: Some elements > PDE
+                elif exposure > control_threshold:
+                    situation = 2  # Situation 2: Some elements between 30% and 100% PDE
+    
+    return situation
+
+def get_elements_above_threshold(batch_results, calculation_data, route, daily_dose, control_percentage=30):
+    """Get list of elements with levels between 30% and 100% PDE"""
+    elements_above_threshold = set()
+    
+    for batch_name, batch_data in batch_results.items():
+        for element, measured in batch_data.items():
+            element_data = calculation_data[calculation_data['Element'] == element]
+            
+            if not element_data.empty:
+                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
+                control_threshold = pde * (control_percentage / 100)
+                
+                # Calculate exposure
+                exposure = measured * daily_dose
+                
+                if exposure > control_threshold and exposure <= pde:
+                    elements_above_threshold.add(element)
+    
+    return list(elements_above_threshold)
+
+def get_elements_above_pde(batch_results, calculation_data, route, daily_dose):
+    """Get list of elements with levels above PDE"""
+    elements_above_pde = set()
+    
+    for batch_name, batch_data in batch_results.items():
+        for element, measured in batch_data.items():
+            element_data = calculation_data[calculation_data['Element'] == element]
+            
+            if not element_data.empty:
+                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
+                
+                # Calculate exposure
+                exposure = measured * daily_dose
+                
+                if exposure > pde:
+                    elements_above_pde.add(element)
+    
+    return list(elements_above_pde)
+
+def create_id_card_document(form_data, calculation_data, batch_results, control_percentage=30):
+    """Function to create R&D Medicinal Product ID Card document for Sections 2, 3, and 4"""
+    doc = Document()
+    
+    # Set margins
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
+    
+    # Title
+    title = doc.add_heading('R&D Medicinal product ID card', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    subtitle = doc.add_paragraph('- -  Formula reference: ' + form_data.get('actime_code', 'N/A') + '  Evaluation of elemental impurities (ICH Q3D) for Phase 1 & 2')
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p = doc.add_paragraph('For Investigational Medicinal Product (IMP) in Phase 1 and 2\n'
+                         'This document (following the requirements of STD000040 and SD000133) is the only document to be filled out during early development phases, '
+                         'in order to perform an evaluation of the elemental impurities to be tested in the drug product and to justify the control strategy.\n'
+                         'This evaluation must be carried out by the site producing the R&D drug product.')
+    
+    # Add some space
+    doc.add_paragraph()
+    
+    # SECTION 2: RESULT OF DRUG PRODUCT TESTING
+    doc.add_heading('2 RESULT OF DRUG PRODUCT TESTING', level=1)
+    
+    # 2.1 Elemental impurities tested
+    doc.add_heading('2.1 Elemental impurities tested', level=2)
+    
+    p = doc.add_paragraph('The elemental impurities as listed in the guideline: STD-00040, must be tested. '
+                         'In case of elemental impurities exclusion, the justification should be attached in appendix of this risk assessment.')
+    
+    p = doc.add_paragraph('ICH classification:\n'
+                         'Class 1: As, Cd, Hg, Pb\n'
+                         'Class 2A: Co, Ni, V\n'
+                         'Class 2B: Ag, Au, Ir, Os, Pd, Pt, Rh, Ru, Se, Tl\n'
+                         'Class 3: Ba, Cr, Cu, Li, Mo, Sb, Sn\n'
+                         'other: Al, B, Ca, Fe, K, Mg, Mn, Na, W, Zn')
+    
+    p = doc.add_paragraph('For the elemental impurities (EI) tested are:')
+    
+    # Create a table for EI tested
+    table = doc.add_table(rows=5, cols=2)
+    table.style = 'Table Grid'
+    
+    # Determine which classes are tested based on route
+    route = form_data.get('route_of_administration', 'parenteral')
+    
+    # Row 1
+    cell = table.cell(0, 0)
+    cell.text = "☒" if route == 'oral' else "☐"
+    cell = table.cell(0, 1)
+    cell.text = "Class 1 and 2a EI (if for oral route)"
+    
+    # Row 2
+    cell = table.cell(1, 0)
+    cell.text = "☒" if route == 'parenteral' else "☐"
+    cell = table.cell(1, 1)
+    cell.text = "Class 1, 2a and partially 3 EI (Li, Sb, Cu) (if for parenteral route)"
+    
+    # Row 3
+    cell = table.cell(2, 0)
+    cell.text = "☒" if route == 'inhalation' else "☐"
+    cell = table.cell(2, 1)
+    cell.text = "Class 1, 2a and 3 EI (if for inhalation route)"
+    
+    # Row 4
+    cell = table.cell(3, 0)
+    cell.text = "☐"
+    cell = table.cell(3, 1)
+    cell.text = "Other potential EI identified on the R&D MP ID Card\nif yes, which?"
+    
+    # Row 5
+    cell = table.cell(4, 0)
+    cell.text = "☐"
+    cell = table.cell(4, 1)
+    cell.text = "Intentionally added EI\nif yes, which?"
+    
+    # Add EI limits table
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.add_run("Elemental impurities limits in " + form_data.get('product_name', 'Product') + " " + 
+              form_data.get('product_form', 'injectable form') + " (ICH Q3D option 3) with daily dose of " + 
+              str(form_data.get('daily_dose', 0)) + " g").bold = True
+    
+    # Create table for EI limits
+    selected_elements = [element for element, checked in form_data.get('elements', {}).items() if checked]
+    table = doc.add_table(rows=len(selected_elements) + 1, cols=5)
+    table.style = 'Table Grid'
+    
+    # Header row
+    headers = ["Elemental impurity tested", "Permitted Daily Exposure (μg/day)", 
+               "Maximum permitted concentration (μg/g)", f"{control_percentage}% PDE (μg/g)", "Reporting limit (μg/g)"]
+    for i, header in enumerate(headers):
+        cell = table.cell(0, i)
+        cell.text = header
+        run = cell.paragraphs[0].runs[0]
+        run.bold = True
+    
+    # Data rows
+    for i, element in enumerate(selected_elements, 1):
+        element_data = calculation_data[calculation_data['Element'] == element]
+        if not element_data.empty:
+            pde = element_data.iloc[0][f'PDE ({route}) µg/day']
+            mpc = element_data.iloc[0]['MPC µg/g']
+            control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
+            
+            table.cell(i, 0).text = element
+            table.cell(i, 1).text = str(pde)
+            table.cell(i, 2).text = str(mpc)
+            table.cell(i, 3).text = str(control_limit)
+            table.cell(i, 4).text = str(round(control_limit / 3, 3))  # Typical reporting limit is 1/3 of control limit
+    
+    # 2.2 Drug product analyses
+    doc.add_heading('2.2 Drug product analyses', level=2)
+    
+    # Get batch numbers
+    batch_names = list(batch_results.keys())
+    batch_text = ", ".join(batch_names) if batch_names else "N/A"
+    
+    p = doc.add_paragraph(f"{len(batch_names)} batch(es) of {form_data.get('product_name', 'Product')} intended for human administration was tested by ICP/MS or other appropriate method:")
+    p = doc.add_paragraph(f"Batch no.: {batch_text}")
+    
+    # 2.3 Elemental impurities results and Analysis of data
+    doc.add_heading('2.3 Elemental impurities results and Analysis of data', level=2)
+    
+    p = doc.add_paragraph("Batches were tested by ICP/MS or other appropriate method. The EI results obtained for each batch are included below and the complete report is attached in Appendix 1 of this R&D MP ID Card.")
+    
+    p = doc.add_paragraph("(Please attach report or CoA as Appendix 1)")
+    
+    # Create table for batch results
+    table = doc.add_table(rows=len(selected_elements) + 1, cols=2 + len(batch_names))
+    table.style = 'Table Grid'
+    
+    # Header row
+    cell = table.cell(0, 0)
+    cell.text = "Elemental impurity tested"
+    cell.paragraphs[0].runs[0].bold = True
+    
+    cell = table.cell(0, 1)
+    cell.text = "Reporting limit (µg/g)"
+    cell.paragraphs[0].runs[0].bold = True
+    
+    for i, batch_name in enumerate(batch_names):
+        cell = table.cell(0, i + 2)
+        cell.text = f"Batch {batch_name} result (µg/g)"
+        cell.paragraphs[0].runs[0].bold = True
+    
+    # Data rows
+    for i, element in enumerate(selected_elements, 1):
+        element_data = calculation_data[calculation_data['Element'] == element]
+        
+        table.cell(i, 0).text = element
+        
+        if not element_data.empty:
+            control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
+            reporting_limit = round(control_limit / 3, 3)  # Typical reporting limit is 1/3 of control limit
+            table.cell(i, 1).text = str(reporting_limit)
+            
+            # Add batch results
+            for j, batch_name in enumerate(batch_names):
+                measured = batch_results[batch_name].get(element, 0)
+                if measured == 0:
+                    formatted_value = f"< {reporting_limit}"
+                else:
+                    formatted_value = f"{measured:.3f}"
+                table.cell(i, j + 2).text = formatted_value
+    
+    # 2.3.1 Checking compliance with the maximum permitted concentration
+    doc.add_heading('2.3.1 Checking compliance with the maximum permitted concentration for the finished product', level=3)
+    
+    p = doc.add_paragraph("The next step in the risk assessment was to compare, for each elemental impurity, the measured concentration in the finished product to the maximum permitted concentration.")
+    
+    p = doc.add_paragraph("The maximum permitted concentration of each elemental impurity was set according to Appendix 7.4 of the STD-000040, if the dose is below 10 g/day.")
+    
+    daily_dose = form_data.get('daily_dose', 0)
+    if daily_dose > 10:
+        p = doc.add_paragraph("Note: If a dose higher than 10g/day is used or if a specified daily intake is set, the maximum permitted concentration of each elemental impurity must be calculated using the daily intake of drug product and the PDE of the elemental impurity using the following formula:")
+        p = doc.add_paragraph("Maximum permitted concentration (µg/g) = PDE (µg/day) / Maximum daily dose (g/day)")
+    
+    # 2.3.2 Defining control strategy
+    doc.add_heading('2.3.2 Defining control strategy for the drug product', level=3)
+    
+    p = doc.add_paragraph("A limit was also applied during the assessment of elemental impurities to determine if additional control elements may be required to ensure that the PDE is not exceeded in the drug product.")
+    
+    p = doc.add_paragraph(f"This limit (called control threshold), was defined as {control_percentage}% of the PDE of the specific elemental impurity under consideration, according to Option 3 ICH Q3D guideline.")
+    
+    p = doc.add_paragraph("Each elemental impurity will be classified according to their level (see table below):")
+    
+    # Create table for control strategy
+    table = doc.add_table(rows=5, cols=2)
+    table.style = 'Table Grid'
+    
+    # Header row
+    cell = table.cell(0, 0)
+    cell.text = "Elemental impurities level"
+    cell.paragraphs[0].runs[0].bold = True
+    
+    cell = table.cell(0, 1)
+    cell.text = "Actions and/or control strategy"
+    cell.paragraphs[0].runs[0].bold = True
+    
+    # Row 1
+    cell = table.cell(1, 0)
+    cell.text = "Elements that are not likely to be present:\n* Class 2B that have not been intentionally added\n* Class 3 for oral route\n* Elements not identified as likely to be present in the risk assessment"
+    
+    cell = table.cell(1, 1)
+    cell.text = "No further action required"
+    
+    # Row 2
+    cell = table.cell(2, 0)
+    cell.text = "Elements <30% PDE (below control threshold)"
+    
+    cell = table.cell(2, 1)
+    cell.text = "No further action required – existing controls to be considered as adequate"
+    
+    # Row 3
+    cell = table.cell(3, 0)
+    cell.text = "Elements from 30% up to 100% of PDE"
+    
+    cell = table.cell(3, 1)
+    cell.text = "Define additional controls:\n* limits on DP or components\n* Define upstream control and impact on elemental impurities level"
+    
+    # Row 4
+    cell = table.cell(4, 0)
+    cell.text = "Elements > PDE"
+    
+    cell = table.cell(4, 1)
+    cell.text = "If higher level justified, establish limits on DP or components\nOR\nIf not justified, define upstream control and impact on elemental impurities level\nOR\nIdentify the source of the EI and replace the source\nEvaluate safety assessment and rationale to support levels higher than the PDE for specific elements."
+    
+    # SECTION 3: SUMMARY AND FINAL CONCLUSION
+    doc.add_heading('3 SUMMARY AND FINAL CONCLUSION', level=1)
+    
+    p = doc.add_paragraph(f"To support this risk assessment, the following batch(es) of {form_data.get('product_name', 'Product')} was tested: {batch_text}")
+    
+    p = doc.add_paragraph("The tested EI were selected based on the information provided in this R&D MP ID card.")
+    
+    p = doc.add_paragraph(f"The risk assessment carried out for {form_data.get('product_name', 'Product')} demonstrated that:")
+    
+    # Determine compliance situation based on batch results
+    situation = determine_compliance_situation(batch_results, calculation_data, route, daily_dose, control_percentage)
+    
+    if situation == 1:
+        # Situation 1: All elements < 30% PDE
+        p = doc.add_paragraph()
+        p.add_run("Situation 1").bold = True
+        
+        p = doc.add_paragraph("The drug product complies with the ICH Q3D requirements.")
+        
+        p = doc.add_paragraph("For the tested elements, the EI level is in a range of less than the limit of quantitation to the control threshold (30% of the PDE).")
+        
+        p = doc.add_paragraph("As a consequence,")
+        p = doc.add_paragraph("• The safety risk associated to the presence of EI in the drug product can be considered as negligible, close to nil. There is no risk for the patients.")
+        p = doc.add_paragraph("• No additional controls (other than those implicit in the process and material controls already in place) are required to ensure that the drug product meets the requirements of ICH Q3D. Existing controls are adequate.")
+    
+    elif situation == 2:
+        # Situation 2: Some elements between 30% and 100% PDE
+        p = doc.add_paragraph()
+        p.add_run("Situation 2").bold = True
+        
+        p = doc.add_paragraph("The drug product complies with the ICH Q3D requirements.")
+        
+        # Get elements between 30% and 100% PDE
+        elements_above_threshold = get_elements_above_threshold(batch_results, calculation_data, route, daily_dose, control_percentage)
+        
+        if elements_above_threshold:
+            p = doc.add_paragraph("For the following elements, the EI level in the drug product is greater than the control threshold (30% of the PDE) and less than the PDE:")
+            for element in elements_above_threshold:
+                p = doc.add_paragraph(f"• {element}")
+            p = doc.add_paragraph("Other observed EI levels are below the control threshold.")
+        else:
+            p = doc.add_paragraph("For the tested elements, the EI level in the drug product is greater than the control threshold (30% of the PDE) and less than the PDE.")
+        
+        p = doc.add_paragraph("As a consequence,")
+        p = doc.add_paragraph("• The EI levels determined in the drug product, do not pose any safety risk for the patients.")
+        p = doc.add_paragraph("• The current controls may be sufficient to ensure the requirements are met. However, to ensure the PDE(s) will not be exceeded, it is required")
+        p = doc.add_paragraph("  - to determine source of impurity(ies) and define an action plan to reduce its(their) content(s)")
+        p = doc.add_paragraph("  - to establish limits on the identified impurity(ies) in the drug product or component.")
+    
+    elif situation == 3:
+        # Situation 3: Some elements > PDE
+        p = doc.add_paragraph()
+        p.add_run("Situation 3").bold = True
+        
+        p = doc.add_paragraph("The drug product does not comply with the ICH Q3D requirements")
+        
+        # Get elements above PDE
+        elements_above_pde = get_elements_above_pde(batch_results, calculation_data, route, daily_dose)
+        
+        p = doc.add_paragraph("For the following elements, the EI level exceeds the PDE:")
+        for element in elements_above_pde:
+            p = doc.add_paragraph(f"• {element}")
+        
+        p = doc.add_paragraph("As a consequence,")
+        p = doc.add_paragraph("• The safety risk could not be fully assessed. Additional information is needed, to properly evaluate the situation.")
+        p = doc.add_paragraph("• Based on the output of this additional assessment,")
+        p = doc.add_paragraph("  - the EI level(s) higher than established PDE(s) could be justified through a strong scientific rationale. And limit should be established to control the identified impurity(ies) in the drug product or component.")
+        p = doc.add_paragraph("  - or the EI level(s) cannot be justified. In this case, it is required to identify the source of the impurity(ies) and to define an action plan to reduce the level(s) in the drug product. Define upstream control or replace the source and impact on elemental impurities level.")
+        
+        p = doc.add_paragraph("For situation 3/ and sometimes 2/, you need to perform an additional assessment. This assessment and its conclusion should be attached to your Risk Assessment Report, and a Final risk Assessment conclusion should be provided.")
+    
+    # SECTION 4: APPENDICES
+    doc.add_heading('4 APPENDICES', level=1)
+    
+    p = doc.add_paragraph()
+    p.add_run("Appendix 1").bold = True
+    p = doc.add_paragraph("Copy/paste complete analytical report")
+    
+    # Save to BytesIO
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
+
 def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_data, batch_results, control_percentage=30):
     """Create an Excel report with three tables matching the format"""
     # Create a new workbook
@@ -715,395 +1094,6 @@ def create_excel_report(product_name, daily_dose, route, selected_elements, mpc_
     excel_buffer.seek(0)
     return excel_buffer
 
-# New function to create the R&D Medicinal Product ID Card
-def create_id_card_document(form_data, calculation_data, batch_results, control_percentage=30):
-    """Function to create R&D Medicinal Product ID Card document for Sections 2, 3, and 4"""
-    doc = Document()
-    
-    # Set margins
-    sections = doc.sections
-    for section in sections:
-        section.top_margin = Inches(0.75)
-        section.bottom_margin = Inches(0.75)
-        section.left_margin = Inches(0.75)
-        section.right_margin = Inches(0.75)
-    
-    # Title
-    title = doc.add_heading('R&D Medicinal product ID card', 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    subtitle = doc.add_paragraph('- -  Formula reference: ' + form_data['actime_code'] + '  Evaluation of elemental impurities (ICH Q3D) for Phase 1 & 2')
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    p = doc.add_paragraph('For Investigational Medicinal Product (IMP) in Phase 1 and 2\n'
-                         'This document (following the requirements of STD000040 and SD000133) is the only document to be filled out during early development phases, '
-                         'in order to perform an evaluation of the elemental impurities to be tested in the drug product and to justify the control strategy.\n'
-                         'This evaluation must be carried out by the site producing the R&D drug product.')
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    # Add some space
-    doc.add_paragraph()
-    
-    # SECTION 2: RESULT OF DRUG PRODUCT TESTING
-    doc.add_heading('2 RESULT OF DRUG PRODUCT TESTING', level=1)
-    
-    # 2.1 Elemental impurities tested
-    doc.add_heading('2.1 Elemental impurities tested', level=2)
-    
-    p = doc.add_paragraph('The elemental impurities as listed in the guideline: STD-00040, must be tested. '
-                         'In case of elemental impurities exclusion, the justification should be attached in appendix of this risk assessment.')
-    
-    p = doc.add_paragraph('ICH classification:\n'
-                         'Class 1: As, Cd, Hg, Pb\n'
-                         'Class 2A: Co, Ni, V\n'
-                         'Class 2B: Ag, Au, Ir, Os, Pd, Pt, Rh, Ru, Se, Tl\n'
-                         'Class 3: Ba, Cr, Cu, Li, Mo, Sb, Sn\n'
-                         'other: Al, B, Ca, Fe, K, Mg, Mn, Na, W, Zn')
-    
-    p = doc.add_paragraph('For the elemental impurities (EI) tested are:')
-    
-    # Create a table for EI tested
-    table = doc.add_table(rows=5, cols=2)
-    table.style = 'Table Grid'
-    
-    # Determine which classes are tested based on route
-    route = form_data['route_of_administration']
-    
-    # Row 1
-    cell = table.cell(0, 0)
-    cell.text = ""
-    cell = table.cell(0, 1)
-    if route == 'oral':
-        cell.text = "Class 1 and 2a EI (if for oral route)"
-    else:
-        cell.text = ""
-    
-    # Row 2
-    cell = table.cell(1, 0)
-    cell.text = ""
-    cell = table.cell(1, 1)
-    if route == 'parenteral':
-        cell.text = "Class 1, 2a and partially 3 EI (Li, Sb, Cu) (if for parenteral route)"
-    else:
-        cell.text = ""
-    
-    # Row 3
-    cell = table.cell(2, 0)
-    cell.text = ""
-    cell = table.cell(2, 1)
-    if route == 'inhalation':
-        cell.text = "Class 1, 2a and 3 EI (if for inhalation route)"
-    else:
-        cell.text = ""
-    
-    # Row 4
-    cell = table.cell(3, 0)
-    cell.text = ""
-    cell = table.cell(3, 1)
-    cell.text = "Other potential EI identified on the R&D MP ID Card"
-    
-    # Row 5
-    cell = table.cell(4, 0)
-    cell.text = ""
-    cell = table.cell(4, 1)
-    cell.text = "Intentionally added EI"
-    
-    # Add EI limits table
-    p = doc.add_paragraph()
-    p.add_run("Elemental impurities limits in " + form_data['product_name'] + " " + 
-              form_data['product_form'] + " (ICH Q3D option 3) with daily dose of " + 
-              str(form_data['daily_dose']) + " g").bold = True
-    
-    # Create table for EI limits
-    selected_elements = [element for element, checked in form_data['elements'].items() if checked]
-    table = doc.add_table(rows=len(selected_elements) + 1, cols=5)
-    table.style = 'Table Grid'
-    
-    # Header row
-    headers = ["Elemental impurity tested", "Permitted Daily Exposure (μg/day)", 
-               "Maximum permitted concentration (μg/g)", "30% PDE (μg/g)", "Reporting limit (μg/g)"]
-    for i, header in enumerate(headers):
-        cell = table.cell(0, i)
-        cell.text = header
-        run = cell.paragraphs[0].runs[0]
-        run.bold = True
-    
-    # Data rows
-    for i, element in enumerate(selected_elements, 1):
-        element_data = calculation_data[calculation_data['Element'] == element]
-        if not element_data.empty:
-            pde = element_data.iloc[0][f'PDE ({route}) µg/day']
-            mpc = element_data.iloc[0]['MPC µg/g']
-            control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
-            
-            table.cell(i, 0).text = element
-            table.cell(i, 1).text = str(pde)
-            table.cell(i, 2).text = str(mpc)
-            table.cell(i, 3).text = str(control_limit)
-            table.cell(i, 4).text = str(round(control_limit / 3, 3))  # Typical reporting limit is 1/3 of control limit
-    
-    # 2.2 Drug product analyses
-    doc.add_heading('2.2 Drug product analyses', level=2)
-    
-    # Get batch numbers
-    batch_names = list(batch_results.keys())
-    batch_text = ", ".join(batch_names) if batch_names else "N/A"
-    
-    p = doc.add_paragraph(f"{len(batch_names)} batch(es) of {form_data['product_name']} intended for human administration was tested by ICP/MS or other appropriate method:")
-    p = doc.add_paragraph(f"Batch no.: {batch_text}")
-    
-    # 2.3 Elemental impurities results and Analysis of data
-    doc.add_heading('2.3 Elemental impurities results and Analysis of data', level=2)
-    
-    p = doc.add_paragraph("Batches were tested by ICP/MS or other appropriate method. The EI results obtained for each batch are included below and the complete report is attached in Appendix 1 of this R&D MP ID Card.")
-    
-    p = doc.add_paragraph("(Please attach report or CoA as Appendix 1)")
-    
-    # Create table for batch results
-    table = doc.add_table(rows=len(selected_elements) + 1, cols=2 + len(batch_names))
-    table.style = 'Table Grid'
-    
-    # Header row
-    cell = table.cell(0, 0)
-    cell.text = "Elemental impurity tested"
-    cell.paragraphs[0].runs[0].bold = True
-    
-    cell = table.cell(0, 1)
-    cell.text = "Reporting limit (µg/g)"
-    cell.paragraphs[0].runs[0].bold = True
-    
-    for i, batch_name in enumerate(batch_names):
-        cell = table.cell(0, i + 2)
-        cell.text = f"Batch {batch_name} result (µg/g)"
-        cell.paragraphs[0].runs[0].bold = True
-    
-    # Data rows
-    for i, element in enumerate(selected_elements, 1):
-        element_data = calculation_data[calculation_data['Element'] == element]
-        
-        table.cell(i, 0).text = element
-        
-        if not element_data.empty:
-            control_limit = element_data.iloc[0][f'Control Strategy Limit ({control_percentage}%) µg/g']
-            reporting_limit = round(control_limit / 3, 3)  # Typical reporting limit is 1/3 of control limit
-            table.cell(i, 1).text = str(reporting_limit)
-            
-            # Add batch results
-            for j, batch_name in enumerate(batch_names):
-                measured = batch_results[batch_name].get(element, 0)
-                if measured == 0:
-                    formatted_value = f"< {reporting_limit}"
-                else:
-                    formatted_value = f"{measured:.3f}"
-                table.cell(i, j + 2).text = formatted_value
-    
-    # 2.3.1 Checking compliance with the maximum permitted concentration
-    doc.add_heading('2.3.1 Checking compliance with the maximum permitted concentration for the finished product', level=3)
-    
-    p = doc.add_paragraph("The next step in the risk assessment was to compare, for each elemental impurity, the measured concentration in the finished product to the maximum permitted concentration.")
-    
-    p = doc.add_paragraph("The maximum permitted concentration of each elemental impurity was set according to Appendix 7.4 of the STD-000040, if the dose is below 10 g/day.")
-    
-    if form_data['daily_dose'] > 10:
-        p = doc.add_paragraph("Note: If a dose higher than 10g/day is used or if a specified daily intake is set, the maximum permitted concentration of each elemental impurity must be calculated using the daily intake of drug product and the PDE of the elemental impurity using the following formula:")
-        p = doc.add_paragraph("Maximum permitted concentration (µg/g) = PDE (µg/day) / Maximum daily dose (g/day)")
-    
-    # 2.3.2 Defining control strategy
-    doc.add_heading('2.3.2 Defining control strategy for the drug product', level=3)
-    
-    p = doc.add_paragraph("A limit was also applied during the assessment of elemental impurities to determine if additional control elements may be required to ensure that the PDE is not exceeded in the drug product.")
-    
-    p = doc.add_paragraph(f"This limit (called control threshold), was defined as {control_percentage}% of the PDE of the specific elemental impurity under consideration, according to Option 3 ICH Q3D guideline.")
-    
-    p = doc.add_paragraph("Each elemental impurity will be classified according to their level (see table below):")
-    
-    # Create table for control strategy
-    table = doc.add_table(rows=5, cols=2)
-    table.style = 'Table Grid'
-    
-    # Header row
-    cell = table.cell(0, 0)
-    cell.text = "Elemental impurities level"
-    cell.paragraphs[0].runs[0].bold = True
-    
-    cell = table.cell(0, 1)
-    cell.text = "Actions and/or control strategy"
-    cell.paragraphs[0].runs[0].bold = True
-    
-    # Row 1
-    cell = table.cell(1, 0)
-    cell.text = "Elements that are not likely to be present:\n* Class 2B that have not been intentionally added\n* Class 3 for oral route\n* Elements not identified as likely to be present in the risk assessment"
-    
-    cell = table.cell(1, 1)
-    cell.text = "No further action required"
-    
-    # Row 2
-    cell = table.cell(2, 0)
-    cell.text = "Elements <30% PDE (below control threshold)"
-    
-    cell = table.cell(2, 1)
-    cell.text = "No further action required – existing controls to be considered as adequate"
-    
-    # Row 3
-    cell = table.cell(3, 0)
-    cell.text = "Elements from 30% up to 100% of PDE"
-    
-    cell = table.cell(3, 1)
-    cell.text = "Define additional controls:\n* limits on DP or components\n* Define upstream control and impact on elemental impurities level"
-    
-    # Row 4
-    cell = table.cell(4, 0)
-    cell.text = "Elements > PDE"
-    
-    cell = table.cell(4, 1)
-    cell.text = "If higher level justified, establish limits on DP or components\nOR\nIf not justified, define upstream control and impact on elemental impurities level\nOR\nIdentify the source of the EI and replace the source\nEvaluate safety assessment and rationale to support levels higher than the PDE for specific elements."
-    
-    # SECTION 3: SUMMARY AND FINAL CONCLUSION
-    doc.add_heading('3 SUMMARY AND FINAL CONCLUSION', level=1)
-    
-    p = doc.add_paragraph(f"To support this risk assessment, the following batch(es) of {form_data['product_name']} was tested: {batch_text}")
-    
-    p = doc.add_paragraph("The tested EI were selected based on the information provided in this R&D MP ID card.")
-    
-    p = doc.add_paragraph(f"The risk assessment carried out for {form_data['product_name']} demonstrated that:")
-    
-    # Determine compliance situation based on batch results
-    situation = determine_compliance_situation(batch_results, calculation_data, form_data['route_of_administration'], control_percentage)
-    
-    if situation == 1:
-        # Situation 1: All elements < 30% PDE
-        p = doc.add_paragraph("Situation 1")
-        p.runs[0].bold = True
-        
-        p = doc.add_paragraph("The drug product complies with the ICH Q3D requirements.")
-        
-        p = doc.add_paragraph("For the tested elements, the EI level is in a range of less than the limit of quantitation to the control threshold (30% of the PDE).")
-        
-        p = doc.add_paragraph("As a consequence,")
-        p = doc.add_paragraph("* The safety risk associated to the presence of EI in the drug product can be considered as negligible, close to nil. There is no risk for the patients.")
-        p = doc.add_paragraph("* No additional controls (other than those implicit in the process and material controls already in place) are required to ensure that the drug product meets the requirements of ICH Q3D. Existing controls are adequate.")
-    
-    elif situation == 2:
-        # Situation 2: Some elements between 30% and 100% PDE
-        p = doc.add_paragraph("Situation 2")
-        p.runs[0].bold = True
-        
-        p = doc.add_paragraph("The drug product complies with the ICH Q3D requirements.")
-        
-        # Get elements between 30% and 100% PDE
-        elements_above_threshold = get_elements_above_threshold(batch_results, calculation_data, form_data['route_of_administration'], control_percentage)
-        
-        if elements_above_threshold:
-            p = doc.add_paragraph("For the following elements, the EI level in the drug product is greater than the control threshold (30% of the PDE) and less than the PDE:")
-            p = doc.add_paragraph("Please list these elements")
-            for element in elements_above_threshold:
-                p = doc.add_paragraph(f"* {element}")
-            p = doc.add_paragraph("Other observed EI levels are below the control threshold.")
-        else:
-            p = doc.add_paragraph("For the tested elements, the EI level in the drug product is greater than the control threshold (30% of the PDE) and less than the PDE.")
-        
-        p = doc.add_paragraph("As a consequence,")
-        p = doc.add_paragraph("* The EI levels determined in the drug product, do not pose any safety risk for the patients.")
-        p = doc.add_paragraph("* The current controls may be sufficient to ensure the requirements are met. However, to ensure the PDE(s) will not be exceeded, it is required")
-        p = doc.add_paragraph("* to determine source of impurity(ies) and define an action plan to reduce its(their) content(s)")
-        p = doc.add_paragraph("* to establish limits on the identified impurity(ies) in the drug product or component.")
-    
-    elif situation == 3:
-        # Situation 3: Some elements > PDE
-        p = doc.add_paragraph("Situation 3")
-        p.runs[0].bold = True
-        
-        p = doc.add_paragraph("The drug product does not comply with the ICH Q3D requirements")
-        
-        # Get elements above PDE
-        elements_above_pde = get_elements_above_pde(batch_results, calculation_data, form_data['route_of_administration'])
-        
-        p = doc.add_paragraph("For the following elements, the EI level exceeds the PDE:")
-        p = doc.add_paragraph("Please list these elements")
-        for element in elements_above_pde:
-            p = doc.add_paragraph(f"* {element}")
-        
-        p = doc.add_paragraph("As a consequence,")
-        p = doc.add_paragraph("* The safety risk could not be fully assessed. Additional information is needed, to properly evaluate the situation.")
-        p = doc.add_paragraph("* Based on the output of this additional assessment,")
-        p = doc.add_paragraph("* the EI level(s) higher than established PDE(s) could be justified through a strong scientific rationale. And limit should be established to control the identified impurity(ies) in the drug product or component.")
-        p = doc.add_paragraph("* or the EI level(s) cannot be justified. In this case, it is required to identify the source of the impurity(ies) and to define an action plan to reduce the level(s) in the drug product. Define upstream control or replace the source and impact on elemental impurities level.")
-        
-        p = doc.add_paragraph("For situation 3/ and sometimes 2/, you need to perform an additional assessment. This assessment and its conclusion should be attached to your Risk Assessment Report, and a Final risk Assessment conclusion should be provided.")
-    
-    # SECTION 4: APPENDICES
-    doc.add_heading('4 APPENDICES', level=1)
-    
-    p = doc.add_paragraph("Appendix 1")
-    p = doc.add_paragraph("Copy/paste complete analytical report")
-    
-    # Save to BytesIO
-    doc_io = io.BytesIO()
-    doc.save(doc_io)
-    doc_io.seek(0)
-    return doc_io
-
-def determine_compliance_situation(batch_results, calculation_data, route, control_percentage=30):
-    """Determine compliance situation (1, 2, or 3) based on batch results"""
-    situation = 1  # Default: All elements < 30% PDE
-    
-    for batch_name, batch_data in batch_results.items():
-        for element, measured in batch_data.items():
-            element_data = calculation_data[calculation_data['Element'] == element]
-            
-            if not element_data.empty:
-                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
-                control_threshold = pde * (control_percentage / 100)
-                
-                # Calculate exposure
-                exposure = measured * calculation_data['daily_dose'].iloc[0]
-                
-                if exposure > pde:
-                    return 3  # Situation 3: Some elements > PDE
-                elif exposure > control_threshold:
-                    situation = 2  # Situation 2: Some elements between 30% and 100% PDE
-    
-    return situation
-
-def get_elements_above_threshold(batch_results, calculation_data, route, control_percentage=30):
-    """Get list of elements with levels between 30% and 100% PDE"""
-    elements_above_threshold = set()
-    
-    for batch_name, batch_data in batch_results.items():
-        for element, measured in batch_data.items():
-            element_data = calculation_data[calculation_data['Element'] == element]
-            
-            if not element_data.empty:
-                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
-                control_threshold = pde * (control_percentage / 100)
-                
-                # Calculate exposure
-                exposure = measured * calculation_data['daily_dose'].iloc[0]
-                
-                if exposure > control_threshold and exposure <= pde:
-                    elements_above_threshold.add(element)
-    
-    return list(elements_above_threshold)
-
-def get_elements_above_pde(batch_results, calculation_data, route):
-    """Get list of elements with levels above PDE"""
-    elements_above_pde = set()
-    
-    for batch_name, batch_data in batch_results.items():
-        for element, measured in batch_data.items():
-            element_data = calculation_data[calculation_data['Element'] == element]
-            
-            if not element_data.empty:
-                pde = element_data.iloc[0][f'PDE ({route}) µg/day']
-                
-                # Calculate exposure
-                exposure = measured * calculation_data['daily_dose'].iloc[0]
-                
-                if exposure > pde:
-                    elements_above_pde.add(element)
-    
-    return list(elements_above_pde)
-
 def parse_batch_upload_file(uploaded_file, selected_elements):
     """Parse uploaded CSV or Excel file containing batch results"""
     try:
@@ -1171,6 +1161,8 @@ def process_batch_data(df, selected_elements):
 
 def generate_template_file(selected_elements, file_type="csv"):
     """Generate a template file for batch uploads"""
+    from io import StringIO
+    
     columns = ["Batch"] + selected_elements
     df = pd.DataFrame(columns=columns)
     
@@ -1302,7 +1294,7 @@ with tab1:
                    "Phase 3: Medicinal Product ID Card (SD-000134) and Risk Assessment (SD-000131)")
         method_reference = st.text_area("Method reference and/or specification to be applied if relevant")
         
-    submitted = st.form_submit_button("Generate Document")
+        submitted = st.form_submit_button("Generate Document")
     
     if submitted:
         try:
@@ -1512,70 +1504,100 @@ with tab2:
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+            
+            # Generate ID Card document
+            st.markdown("---")
+            st.subheader("R&D Medicinal Product ID Card (Sections 2-4)")
+            st.info("This will generate the R&D Medicinal Product ID Card document with auto-populated Sections 2, 3, and 4 based on your calculation data and batch results.")
+            
+            if st.button("Generate R&D Medicinal Product ID Card"):
+                try:
+                    # Prepare form data from session state and current inputs
+                    form_data = {
+                        'requestor_site': st.session_state.get('requestor_site', ''),
+                        'requestor_name': st.session_state.get('requestor_name', ''),
+                        'requestor_phone': st.session_state.get('requestor_phone', ''),
+                        'requestor_email': st.session_state.get('requestor_email', ''),
+                        'request_date': st.session_state.get('request_date', str(datetime.now().date())),
+                        'product_name': calc_product_name,
+                        'actime_code': st.session_state.get('actime_code', ''),
+                        'product_form': calc_product_form,
+                        'batch_number': ', '.join(st.session_state.batch_results.keys()),
+                        'sample_quantity': st.session_state.get('sample_quantity', ''),
+                        'sample_unit': st.session_state.get('sample_unit', ''),
+                        'number_of_vials': st.session_state.get('number_of_vials', ''),
+                        'safety_risk': st.session_state.get('safety_risk', ''),
+                        'shipment_conditions': st.session_state.get('shipment_conditions', ''),
+                        'storage_conditions': st.session_state.get('storage_conditions', ''),
+                        'gmp_analysis': st.session_state.get('gmp_analysis', ''),
+                        'gmp_purpose': st.session_state.get('gmp_purpose', ''),
+                        'analysis_type': st.session_state.get('analysis_type', ''),
+                        'elements': calc_elements_selected,
+                        'ichq3d_analysis': True,
+                        'method_reference': st.session_state.get('method_reference', ''),
+                        'daily_dose': calc_daily_dose,
+                        'route_of_administration': calc_route
+                    }
+                    
+                    # Create ID Card document
+                    doc_io = create_id_card_document(
+                        form_data, 
+                        calculation_data, 
+                        st.session_state.batch_results, 
+                        calc_control_percentage
+                    )
+                    
+                    # Download button
+                    filename = f"RD_MP_ID_Card_{calc_product_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                    st.download_button(
+                        label="📄 Download R&D MP ID Card (Word Document)",
+                        data=doc_io.getvalue(),
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="download_id_card"
+                    )
+                    
+                    st.success("✅ R&D Medicinal Product ID Card generated successfully!")
+                    
+                    # Show compliance summary
+                    situation = determine_compliance_situation(
+                        st.session_state.batch_results, 
+                        calculation_data, 
+                        calc_route, 
+                        calc_daily_dose, 
+                        calc_control_percentage
+                    )
+                    
+                    if situation == 1:
+                        st.success("✅ **Compliance Status: Situation 1** - All elements below control threshold (30% PDE). No further action required.")
+                    elif situation == 2:
+                        elements_above = get_elements_above_threshold(
+                            st.session_state.batch_results, 
+                            calculation_data, 
+                            calc_route, 
+                            calc_daily_dose, 
+                            calc_control_percentage
+                        )
+                        st.warning(f"⚠️ **Compliance Status: Situation 2** - Some elements between 30% and 100% PDE: {', '.join(elements_above)}. Additional controls may be required.")
+                    elif situation == 3:
+                        elements_above_pde = get_elements_above_pde(
+                            st.session_state.batch_results, 
+                            calculation_data, 
+                            calc_route, 
+                            calc_daily_dose
+                        )
+                        st.error(f"❌ **Compliance Status: Situation 3** - Elements exceed PDE: {', '.join(elements_above_pde)}. Action required!")
+                    
+                except Exception as e:
+                    st.error(f"Error generating ID Card: {str(e)}")
+                    import traceback
+                    st.error(traceback.format_exc())
         else:
             st.warning("Please select at least one element for calculations.")
     else:
         st.info("Upload batch results or add manual batches to generate the report.")
-
-    # Add this to Tab 2 (Calculations) after the Excel report download button
-if st.session_state.batch_results and len(st.session_state.batch_results) > 0:
-    # Generate ID Card document
-    st.markdown("---")
-    st.subheader("R&D Medicinal Product ID Card")
-    
-    if st.button("Generate R&D Medicinal Product ID Card (Sections 2-4)"):
-        try:
-            # Get form data from the first tab
-            form_data = {
-                'requestor_site': st.session_state.get('requestor_site', ''),
-                'requestor_name': st.session_state.get('requestor_name', ''),
-                'requestor_phone': st.session_state.get('requestor_phone', ''),
-                'requestor_email': st.session_state.get('requestor_email', ''),
-                'request_date': st.session_state.get('request_date', ''),
-                'product_name': calc_product_name,
-                'actime_code': st.session_state.get('actime_code', ''),
-                'product_form': calc_product_form,
-                'batch_number': ', '.join(st.session_state.batch_results.keys()),
-                'sample_quantity': st.session_state.get('sample_quantity', ''),
-                'sample_unit': st.session_state.get('sample_unit', ''),
-                'number_of_vials': st.session_state.get('number_of_vials', ''),
-                'safety_risk': st.session_state.get('safety_risk', ''),
-                'shipment_conditions': st.session_state.get('shipment_conditions', ''),
-                'storage_conditions': st.session_state.get('storage_conditions', ''),
-                'gmp_analysis': st.session_state.get('gmp_analysis', ''),
-                'gmp_purpose': st.session_state.get('gmp_purpose', ''),
-                'analysis_type': st.session_state.get('analysis_type', ''),
-                'elements': calc_elements_selected,
-                'ichq3d_analysis': True,
-                'method_reference': st.session_state.get('method_reference', ''),
-                'daily_dose': calc_daily_dose,
-                'route_of_administration': calc_route
-            }
-            
-            # Create ID Card document
-            doc_io = create_id_card_document(
-                form_data, 
-                calculation_data, 
-                st.session_state.batch_results, 
-                calc_control_percentage
-            )
-            
-            # Download button
-            filename = f"RD_MP_ID_Card_{calc_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-            st.download_button(
-                label="Download R&D MP ID Card",
-                data=doc_io.getvalue(),
-                file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-            
-            st.success("R&D Medicinal Product ID Card generated successfully!")
-            
-        except Exception as e:
-            st.error(f"Error generating ID Card: {str(e)}")
     
     if st.button("Clear All Data"):
         st.session_state.calculated_data = None
         st.session_state.batch_results = {}
         st.rerun()
-
